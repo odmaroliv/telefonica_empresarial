@@ -2,7 +2,8 @@
 using Microsoft.EntityFrameworkCore;
 using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data;
 using TelefonicaEmpresaria.Models;
-using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services;
+using TelefonicaEmpresarial.Services;
+using Twilio.Security;
 
 namespace TelefonicaEmpresarial.Controllers
 {
@@ -12,11 +13,18 @@ namespace TelefonicaEmpresarial.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IStripeService _stripeService;
+        private readonly IConfiguration _configuration;
+        private readonly string _twilioAuthToken;
 
-        public WebhooksController(ApplicationDbContext context, IStripeService stripeService)
+        public WebhooksController(
+            ApplicationDbContext context,
+            IStripeService stripeService,
+            IConfiguration configuration)
         {
             _context = context;
             _stripeService = stripeService;
+            _configuration = configuration;
+            _twilioAuthToken = _configuration["Twilio:AuthToken"] ?? throw new ArgumentNullException("Twilio:AuthToken");
         }
 
         [HttpPost("stripe")]
@@ -36,12 +44,24 @@ namespace TelefonicaEmpresarial.Controllers
             }
         }
 
-        [HttpPost("plivo/llamada")]
-        public async Task<IActionResult> PlivoLlamadaWebhook([FromForm] PlivoLlamadaEvento evento)
+        [HttpPost("twilio/llamada")]
+        public async Task<IActionResult> TwilioLlamadaWebhook([FromForm] TwilioLlamadaEvento evento)
         {
             try
             {
-                // Buscar el número en nuestra base de datos
+                // Verificar la firma de Twilio
+                var requestUrl = $"{Request.Scheme}://{Request.Host}{Request.Path}{Request.QueryString}";
+                var parameters = Request.Form.ToDictionary(x => x.Key, x => x.Value.ToString());
+
+                var validator = new RequestValidator(_twilioAuthToken);
+                var signature = Request.Headers["X-Twilio-Signature"].ToString();
+
+                if (!validator.Validate(requestUrl, parameters, signature))
+                {
+                    return Unauthorized("Firma Twilio inválida");
+                }
+
+                // Buscar el número en nuestra base de datos (To en Twilio es nuestro número)
                 var numeroTelefonico = await _context.NumerosTelefonicos
                     .FirstOrDefaultAsync(n => n.Numero == evento.To);
 
@@ -53,9 +73,9 @@ namespace TelefonicaEmpresarial.Controllers
                         NumeroTelefonicoId = numeroTelefonico.Id,
                         NumeroOrigen = evento.From,
                         FechaHora = DateTime.UtcNow,
-                        Duracion = evento.Duration,
-                        Estado = evento.Status,
-                        IdLlamadaPlivo = evento.CallUuid
+                        Duracion = evento.CallDuration,
+                        Estado = evento.CallStatus,
+                        IdLlamadaPlivo = evento.CallSid
                     };
 
                     _context.LogsLlamadas.Add(log);
@@ -70,11 +90,23 @@ namespace TelefonicaEmpresarial.Controllers
             }
         }
 
-        [HttpPost("plivo/sms")]
-        public async Task<IActionResult> PlivoSMSWebhook([FromForm] PlivoSMSEvento evento)
+        [HttpPost("twilio/sms")]
+        public async Task<IActionResult> TwilioSMSWebhook([FromForm] TwilioSMSEvento evento)
         {
             try
             {
+                // Verificar la firma de Twilio
+                var requestUrl = $"{Request.Scheme}://{Request.Host}{Request.Path}{Request.QueryString}";
+                var parameters = Request.Form.ToDictionary(x => x.Key, x => x.Value.ToString());
+
+                var validator = new RequestValidator(_twilioAuthToken);
+                var signature = Request.Headers["X-Twilio-Signature"].ToString();
+
+                if (!validator.Validate(requestUrl, parameters, signature))
+                {
+                    return Unauthorized("Firma Twilio inválida");
+                }
+
                 // Buscar el número en nuestra base de datos
                 var numeroTelefonico = await _context.NumerosTelefonicos
                     .FirstOrDefaultAsync(n => n.Numero == evento.To);
@@ -87,15 +119,19 @@ namespace TelefonicaEmpresarial.Controllers
                         NumeroTelefonicoId = numeroTelefonico.Id,
                         NumeroOrigen = evento.From,
                         FechaHora = DateTime.UtcNow,
-                        Mensaje = evento.Text,
-                        IdMensajePlivo = evento.MessageUuid
+                        Mensaje = evento.Body,
+                        IdMensajePlivo = evento.MessageSid
                     };
 
                     _context.LogsSMS.Add(log);
                     await _context.SaveChangesAsync();
                 }
 
-                return Ok();
+                // Responder con TwiML vacío
+                return Content(
+                    "<Response></Response>",
+                    "application/xml"
+                );
             }
             catch (Exception ex)
             {
@@ -104,21 +140,21 @@ namespace TelefonicaEmpresarial.Controllers
         }
     }
 
-    // Clases para mapear eventos de Plivo
-    public class PlivoLlamadaEvento
+    // Clases para mapear eventos de Twilio
+    public class TwilioLlamadaEvento
     {
         public string From { get; set; } = string.Empty;
         public string To { get; set; } = string.Empty;
-        public string CallUuid { get; set; } = string.Empty;
-        public int Duration { get; set; }
-        public string Status { get; set; } = string.Empty;
+        public string CallSid { get; set; } = string.Empty;
+        public int CallDuration { get; set; }
+        public string CallStatus { get; set; } = string.Empty;
     }
 
-    public class PlivoSMSEvento
+    public class TwilioSMSEvento
     {
         public string From { get; set; } = string.Empty;
         public string To { get; set; } = string.Empty;
-        public string Text { get; set; } = string.Empty;
-        public string MessageUuid { get; set; } = string.Empty;
+        public string Body { get; set; } = string.Empty;
+        public string MessageSid { get; set; } = string.Empty;
     }
 }

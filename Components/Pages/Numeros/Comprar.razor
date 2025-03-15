@@ -1,15 +1,19 @@
 ﻿@page "/numeros/comprar"
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using Microsoft.AspNetCore.Identity
 @using System.Security.Claims
 @using TelefonicaEmpresaria.Models
-@using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services
+@using TelefonicaEmpresarial.Services
 @attribute [Authorize]
 @inject UserManager<ApplicationUser> UserManager
 @inject ITelefonicaService TelefonicaService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
+@inject ILogger<Comprar> Logger
+@inject ProtectedSessionStorage SessionStorage
+
 
 <div class="container mx-auto px-4 py-8">
     <div class="flex items-center mb-8">
@@ -23,18 +27,56 @@
 
     <div class="bg-white rounded-lg shadow-md p-6 mb-8">
         <div class="mb-8">
-            <h2 class="text-xl font-semibold mb-4">Selecciona un número telefónico</h2>
-
+            <h2 class="text-xl font-semibold mb-4">Selecciona país y número telefónico</h2>
+            
+            <!-- Selector de país -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-1">País</label>
+                <div class="relative">
+                    <select @bind="paisSeleccionado" @bind:after="CambiarPais" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white">
+                        @if (paisesDisponibles == null || !paisesDisponibles.Any())
+                        {
+                            <option value="MX">México</option>
+                            <option value="US">Estados Unidos</option>
+                        }
+                        else
+                        {
+                            @foreach (var pais in paisesDisponibles)
+                            {
+                                <option value="@pais.Codigo">@pais.Nombre (@pais.Prefijo)</option>
+                            }
+                        }
+                    </select>
+                    <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                        <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            
             @if (cargandoNumeros)
             {
                 <div class="flex justify-center py-8">
                     <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
                 </div>
             }
+            else if (error != null)
+            {
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <strong class="font-bold">Error:</strong>
+                    <span class="block sm:inline">@error</span>
+                </div>
+                <div class="text-center py-4">
+                    <button @onclick="CargarNumeros" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                        Intentar nuevamente
+                    </button>
+                </div>
+            }
             else if (numerosDisponibles == null || !numerosDisponibles.Any())
             {
                 <div class="text-center py-8">
-                    <p class="text-gray-500 mb-4">No hay números disponibles en este momento.</p>
+                    <p class="text-gray-500 mb-4">No hay números disponibles para el país seleccionado.</p>
                     <button @onclick="CargarNumeros" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
                         Intentar nuevamente
                     </button>
@@ -45,8 +87,8 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                     @foreach (var numero in numerosDisponibles)
                     {
-                        <div @onclick="() => SeleccionarNumero(numero)"
-                             class="@(numeroSeleccionado?.Number == numero.Number ? "bg-blue-50 border-blue-500" : "bg-gray-50 border-gray-200")
+                        <div @onclick="() => SeleccionarNumero(numero)" 
+                             class="@(numeroSeleccionado?.Number == numero.Number ? "bg-blue-50 border-blue-500" : "bg-gray-50 border-gray-200") 
                                     border-2 rounded-lg p-4 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors">
                             <div class="font-bold text-lg mb-2">@FormatearNumero(numero.Number)</div>
                             <div class="text-sm text-gray-600">Costo mensual: $@numero.MonthlyRentalRate.ToString("0.00") MXN</div>
@@ -60,6 +102,12 @@
                                     <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">SMS</span>
                                 }
                             </div>
+                            @if (numero.Country != paisSeleccionado)
+                            {
+                                <div class="mt-2">
+                                    <span class="text-xs text-amber-600">* Número alternativo de @numero.Country</span>
+                                </div>
+                            }
                         </div>
                     }
                 </div>
@@ -105,6 +153,10 @@
                         <span class="font-medium">@FormatearNumero(numeroSeleccionado.Number)</span>
                     </div>
                     <div class="flex justify-between mb-2">
+                        <span>País:</span>
+                        <span>@(GetNombrePais(numeroSeleccionado.Country))</span>
+                    </div>
+                    <div class="flex justify-between mb-2">
                         <span>Costo mensual base:</span>
                         <span>$@costoNumero.ToString("0.00") MXN</span>
                     </div>
@@ -123,7 +175,7 @@
                 </div>
 
                 <div class="mt-6 flex items-center">
-                    <button @onclick="ComprarNumero"
+                    <button @onclick="ComprarNumero" 
                             class="w-full px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             disabled="@cargandoCompra">
                         @if (cargandoCompra)
@@ -149,38 +201,98 @@
 
 @code {
     private ApplicationUser? user;
-    private List<PlivoNumeroDisponible>? numerosDisponibles;
-    private PlivoNumeroDisponible? numeroSeleccionado;
+    private List<TwilioNumeroDisponible>? numerosDisponibles;
+    private TwilioNumeroDisponible? numeroSeleccionado;
+    private List<PaisDisponible>? paisesDisponibles;
+    private string paisSeleccionado = "MX";
     private string numeroRedireccion = "";
     private bool habilitarSMS;
     private bool cargandoNumeros;
     private bool cargandoCompra;
+    private bool cargandoPaises;
     private string errorRedireccion = "";
+    private string? error;
     private decimal costoNumero;
     private decimal costoSMS;
+
 
     [Inject]
     private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
 
+    
+
     protected override async Task OnInitializedAsync()
     {
-        // Obtener el usuario actual a través del AuthenticationStateProvider
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        user = await UserManager.GetUserAsync(authState.User);
 
-        if (!string.IsNullOrEmpty(userId))
-        {
-            user = await UserManager.FindByIdAsync(userId);
-        }
+        // Cargar países disponibles
+        await CargarPaises();
 
+        // Cargar números para el país predeterminado
         await CargarNumeros();
     }
+    private async Task CargarPaises()
+    {
+        cargandoPaises = true;
+        try
+        {
+            Logger.LogInformation("Cargando países disponibles");
+            
+            var twService = TelefonicaService as ITwilioService;
+            if (twService != null)
+            {
+                paisesDisponibles = await twService.ObtenerPaisesDisponibles();
+                Logger.LogInformation($"Se cargaron {paisesDisponibles.Count} países");
+            }
+            else
+            {
+                // Fallback si el servicio no es ITwilioService
+                Logger.LogWarning("Usando lista predeterminada de países");
+                paisesDisponibles = new List<PaisDisponible>
+                {
+                    new PaisDisponible { Codigo = "MX", Nombre = "México", Prefijo = "+52" },
+                    new PaisDisponible { Codigo = "US", Nombre = "Estados Unidos", Prefijo = "+1" }
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar países");
+            
+            // Países por defecto
+            paisesDisponibles = new List<PaisDisponible>
+            {
+                new PaisDisponible { Codigo = "MX", Nombre = "México", Prefijo = "+52" },
+                new PaisDisponible { Codigo = "US", Nombre = "Estados Unidos", Prefijo = "+1" }
+            };
+        }
+        finally
+        {
+            cargandoPaises = false;
+        }
+    }
+
     private async Task CargarNumeros()
     {
         cargandoNumeros = true;
+        numeroSeleccionado = null;
+        error = null;
+        
         try
         {
-            numerosDisponibles = await TelefonicaService.ObtenerNumerosDisponibles("mx", 12);
+            Logger.LogInformation($"Cargando números para país {paisSeleccionado}");
+            
+            numerosDisponibles = await TelefonicaService.ObtenerNumerosDisponibles(paisSeleccionado, 12);
+            
+            Logger.LogInformation($"Se cargaron {numerosDisponibles.Count} números");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error al cargar números para {paisSeleccionado}");
+            
+            error = $"No pudimos cargar números: {ex.Message}";
+            numerosDisponibles = new List<TwilioNumeroDisponible>();
         }
         finally
         {
@@ -188,20 +300,39 @@
         }
     }
 
-    private async Task SeleccionarNumero(PlivoNumeroDisponible numero)
+    private async Task CambiarPais()
     {
-        numeroSeleccionado = numero;
+        Logger.LogInformation($"Cambiando país a {paisSeleccionado}");
+        await CargarNumeros();
+    }
 
-        // Obtener costo con margen
-        var costos = await TelefonicaService.ObtenerCostos(numeroSeleccionado.Number);
-        costoNumero = costos.CostoNumero;
-        costoSMS = costos.CostoSMS;
+    private async Task SeleccionarNumero(TwilioNumeroDisponible numero)
+    {
+        try
+        {
+            Logger.LogInformation($"Seleccionando número {numero.Number}");
+            
+            numeroSeleccionado = numero;
+            
+            // Obtener costo con margen
+            var costos = await TelefonicaService.ObtenerCostos(numeroSeleccionado.Number);
+            costoNumero = costos.CostoNumero;
+            costoSMS = costos.CostoSMS;
+            
+            Logger.LogInformation($"Costos calculados: Número=${costoNumero}, SMS=${costoSMS}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error al seleccionar número {numero.Number}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al obtener costos: {ex.Message}");
+        }
     }
 
     private async Task ComprarNumero()
     {
         if (user == null || numeroSeleccionado == null)
         {
+            Logger.LogWarning("Intento de compra sin usuario o número seleccionado");
             return;
         }
 
@@ -223,6 +354,8 @@
 
         try
         {
+            Logger.LogInformation($"Iniciando compra de número {numeroSeleccionado.Number} para usuario {user.Id}");
+            
             var (numero, error) = await TelefonicaService.ComprarNumero(
                 user,
                 numeroSeleccionado.Number,
@@ -231,13 +364,38 @@
 
             if (numero != null)
             {
-                // Redirigir a la página de éxito o checkout de Stripe
-                NavigationManager.NavigateTo("/dashboard");
+                Logger.LogInformation($"Número registrado correctamente. ID: {numero.Id}");
+                // Guardar en session storage
+                await SessionStorage.SetAsync("NumeroId", numero.Id);
+                
+                // Obtener URL de pago
+                var urlPago = await TelefonicaService.ObtenerURLPago(numero.Id);
+                
+                if (!string.IsNullOrEmpty(urlPago))
+                {
+                    Logger.LogInformation($"Redirigiendo a URL de pago: {urlPago}");
+                    
+                    // Redirigir a la página de pago de Stripe
+                    await JSRuntime.InvokeVoidAsync("redirectTo", urlPago);
+
+                    return;
+                }
+                else
+                {
+                    Logger.LogWarning("No se pudo obtener URL de pago, redirigiendo a dashboard");
+                    NavigationManager.NavigateTo("/dashboard", forceLoad: true);
+                }
             }
             else
             {
+                Logger.LogError($"Error al comprar número: {error}");
                 await JSRuntime.InvokeVoidAsync("alert", $"Error al comprar el número: {error}");
             }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error durante el proceso de compra");
+            await JSRuntime.InvokeVoidAsync("alert", $"Ocurrió un error durante la compra: {ex.Message}");
         }
         finally
         {
@@ -250,17 +408,44 @@
         NavigationManager.NavigateTo("/dashboard");
     }
 
+    private string GetNombrePais(string? codigoPais)
+    {
+        if (string.IsNullOrEmpty(codigoPais) || paisesDisponibles == null)
+            return codigoPais ?? "Desconocido";
+            
+        var pais = paisesDisponibles.FirstOrDefault(p => p.Codigo == codigoPais);
+        return pais?.Nombre ?? codigoPais;
+    }
+
     private string FormatearNumero(string? numero)
     {
         if (string.IsNullOrEmpty(numero))
             return "";
 
-        // Formato simple para números mexicanos: +52 (XXX) XXX-XXXX
+        // Formato para distintos países
         if (numero.StartsWith("+52") && numero.Length >= 13)
         {
+            // Formato México: +52 (XXX) XXX-XXXX
             return $"+52 ({numero.Substring(3, 3)}) {numero.Substring(6, 3)}-{numero.Substring(9)}";
         }
+        else if (numero.StartsWith("+1") && numero.Length >= 12)
+        {
+            // Formato US/Canadá: +1 (XXX) XXX-XXXX
+            return $"+1 ({numero.Substring(2, 3)}) {numero.Substring(5, 3)}-{numero.Substring(8)}";
+        }
+        else if (numero.StartsWith("+"))
+        {
+            // Formato genérico para otros países
+            var codigoPais = numero.Substring(0, numero.IndexOf(' ') > 0 ? numero.IndexOf(' ') : 3);
+            var resto = numero.Substring(codigoPais.Length);
+            
+            // Intentar aplicar formato más legible
+            if (resto.Length > 6)
+            {
+                return $"{codigoPais} {resto.Substring(0, 3)} {resto.Substring(3, 3)} {resto.Substring(6)}";
+            }
+        }
 
-        return numero;
+        return numero; // Si no encaja en ningún formato, retornar tal cual
     }
 }

@@ -3,8 +3,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data;
 using TelefonicaEmpresaria.Models;
-using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services;
 using TelefonicaEmpresarial.Areas.Identity;
+using TelefonicaEmpresarial.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,13 +34,9 @@ builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<ApplicationUser>>();
 
-// Servicios HTTP para APIs externas
-builder.Services.AddHttpClient<IPlivoService, PlivoService>();
-
-// Servicios para la aplicación
-builder.Services.AddScoped<IPlivoService, PlivoService>();
-builder.Services.AddScoped<IStripeService, StripeService>();
+builder.Services.AddScoped<ITwilioService, TwilioService>();
 builder.Services.AddScoped<ITelefonicaService, TelefonicaService>();
+builder.Services.AddScoped<IStripeService, StripeService>();
 
 // Configuración de CORS si es necesario
 builder.Services.AddCors(options =>
@@ -49,7 +45,7 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
             "https://api.stripe.com",
-            "https://api.plivo.com")
+            "https://api.twilio.com")
         .AllowAnyHeader()
         .AllowAnyMethod();
     });

@@ -1,0 +1,90 @@
+﻿@page "/checkout/cancel"
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using TelefonicaEmpresarial.Services
+@inject NavigationManager NavigationManager
+@inject ITelefonicaService TelefonicaService
+@inject IJSRuntime JSRuntime
+@inject ILogger<CheckoutCancel> Logger
+@inject ProtectedSessionStorage SessionStorage
+
+<div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div class="max-w-md w-full bg-white rounded-lg shadow-xl overflow-hidden">
+        <div class="py-16 px-8 text-center">
+            <div class="bg-yellow-100 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Compra cancelada</h2>
+            <p class="text-gray-600 mb-8">
+                Has cancelado el proceso de pago.<br />
+                No se ha realizado ningún cargo a tu tarjeta.
+            </p>
+
+            <div class="flex flex-col space-y-4">
+                <button @onclick="IntentarNuevamente" class="px-5 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                    Intentar nuevamente
+                </button>
+                <button @onclick="IrADashboard" class="px-5 py-3 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors">
+                    Volver al Dashboard
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int? numeroId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Comprobar en sesión si tenemos un numeroId guardado
+            var resultado = await SessionStorage.GetAsync<int>("NumeroId");
+            if (resultado.Success)
+            {
+                numeroId = resultado.Value;
+                Logger.LogInformation($"NumeroId recuperado de sesión: {numeroId}");
+
+                // Opcional: Cancelar el número en la base de datos
+                // En un ambiente real, esto podría hacerse automáticamente o dejar que expire
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al recuperar información de sesión");
+        }
+    }
+
+    private async Task IntentarNuevamente()
+    {
+        if (numeroId.HasValue)
+        {
+            // Si tenemos el ID, redirigir a checkout con ese número
+            try
+            {
+                var urlPago = await TelefonicaService.ObtenerURLPago(numeroId.Value);
+
+                if (!string.IsNullOrEmpty(urlPago))
+                {
+                    Logger.LogInformation($"Redirigiendo a URL de pago: {urlPago}");
+                    await JSRuntime.InvokeVoidAsync("window.location.href", urlPago);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error al intentar obtener URL de pago");
+            }
+        }
+
+        // Si falla o no tenemos ID, simplemente ir a la página de compra
+        NavigationManager.NavigateTo("/numeros/comprar");
+    }
+
+    private void IrADashboard()
+    {
+        NavigationManager.NavigateTo("/dashboard");
+    }
+}

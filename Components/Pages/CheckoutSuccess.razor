@@ -1,0 +1,193 @@
+﻿@page "/checkout/success"
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using TelefonicaEmpresarial.Services
+@using Microsoft.AspNetCore.WebUtilities
+@inject NavigationManager NavigationManager
+@inject IStripeService StripeService
+@inject ITwilioService TwilioService
+@inject ITelefonicaService TelefonicaService
+@inject IJSRuntime JSRuntime
+@inject ILogger<CheckoutSuccess> Logger
+@inject ProtectedSessionStorage SessionStorage
+
+<div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div class="max-w-md w-full bg-white rounded-lg shadow-xl overflow-hidden">
+        @if (procesando)
+        {
+            <div class="py-16 px-8 text-center">
+                <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mx-auto mb-6"></div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Procesando tu compra</h2>
+                <p class="text-gray-600">
+                    Estamos configurando tu número telefónico.<br />
+                    Por favor espera un momento...
+                </p>
+            </div>
+        }
+        else if (error != null)
+        {
+            <div class="py-16 px-8 text-center">
+                <div class="bg-red-100 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Ocurrió un problema</h2>
+                <p class="text-gray-600 mb-6">
+                    @error
+                </p>
+                <div class="mt-8">
+                    <button @onclick="IrADashboard" class="px-5 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                        Ir al Dashboard
+                    </button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="py-16 px-8 text-center">
+                <div class="bg-green-100 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">¡Compra exitosa!</h2>
+                <p class="text-gray-600 mb-6">
+                    Tu número telefónico ha sido configurado correctamente.
+                </p>
+                <div class="bg-gray-50 rounded-lg p-6 mb-8">
+                    <div class="flex justify-between mb-2">
+                        <span class="font-medium">Número:</span>
+                        <span>@numeroAdquirido</span>
+                    </div>
+                    <div class="flex justify-between mb-2">
+                        <span class="font-medium">Estado:</span>
+                        <span class="text-green-600 font-medium">Activo</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="font-medium">SMS:</span>
+                        <span>@(smsHabilitado ? "Habilitado" : "No habilitado")</span>
+                    </div>
+                </div>
+                <div class="mt-8">
+                    <button @onclick="IrADashboard" class="px-5 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                        Ir al Dashboard
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool procesando = true;
+    private string? error;
+    private string? numeroAdquirido;
+    private bool smsHabilitado;
+    private string? sessionId;
+    private int? numeroId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Obtener session_id del query parameter
+            var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+            if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("session_id", out var sessionIdValue))
+            {
+                sessionId = sessionIdValue;
+                Logger.LogInformation($"Session ID recibido: {sessionId}");
+
+                // Comprobar en sesión si ya tenemos un numeroId guardado
+                var resultado = await SessionStorage.GetAsync<int>("NumeroId");
+                if (resultado.Success)
+                {
+                    numeroId = resultado.Value;
+                    Logger.LogInformation($"NumeroId recuperado de sesión: {numeroId}");
+                }
+
+                // Procesar la compra
+                await ProcesarCompra();
+            }
+            else
+            {
+                error = "No se encontró la información de la sesión de pago.";
+                Logger.LogWarning("No se recibió session_id en los parámetros");
+            }
+        }
+        catch (Exception ex)
+        {
+            error = $"Ocurrió un error al procesar tu compra: {ex.Message}";
+            Logger.LogError(ex, "Error al inicializar la página de éxito");
+        }
+        finally
+        {
+            procesando = false;
+        }
+    }
+
+    private async Task ProcesarCompra()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(sessionId))
+            {
+                error = "ID de sesión no válido.";
+                return;
+            }
+
+            // Verificar que el pago se completó correctamente
+            bool pagoCompletado = await StripeService.VerificarPagoCompletado(sessionId);
+
+            if (!pagoCompletado)
+            {
+                error = "El pago no se ha completado correctamente. Por favor, contacta a soporte.";
+                Logger.LogWarning($"Pago no completado para sesión {sessionId}");
+                return;
+            }
+
+            Logger.LogInformation($"Pago verificado para sesión {sessionId}");
+
+            // Buscar el número asociado a esta transacción (ya sea por ID almacenado o buscándolo)
+            if (numeroId.HasValue)
+            {
+                var numeroDetalle = await TelefonicaService.ObtenerNumeroDetalle(numeroId.Value);
+                if (numeroDetalle != null)
+                {
+                    numeroAdquirido = numeroDetalle.Numero;
+                    smsHabilitado = numeroDetalle.SMSHabilitado;
+
+                    // El procesamiento real ocurrirá mediante el webhook de Stripe
+                    // Aquí solo mostramos la información al usuario
+
+                    Logger.LogInformation($"Detalles del número recuperados: {numeroAdquirido}");
+                }
+                else
+                {
+                    error = "No se pudo encontrar el número adquirido en nuestra base de datos.";
+                    Logger.LogWarning($"No se encontró el número con ID {numeroId}");
+                }
+            }
+            else
+            {
+                // En un entorno real, buscaríamos el número por la transacción
+                // Pero por simplicidad, solo mostraremos un error
+                error = "No se pudo recuperar la información del número adquirido.";
+                Logger.LogWarning("No se tiene numeroId en sesión");
+            }
+        }
+        catch (Exception ex)
+        {
+            error = $"Ocurrió un error al procesar tu compra: {ex.Message}";
+            Logger.LogError(ex, "Error al procesar la compra");
+        }
+        finally
+        {
+            procesando = false;
+        }
+    }
+
+    private void IrADashboard()
+    {
+        NavigationManager.NavigateTo("/dashboard");
+    }
+}

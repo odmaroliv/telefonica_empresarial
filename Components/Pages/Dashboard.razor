@@ -2,23 +2,36 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
+@using System.Security.Claims
 @using TelefonicaEmpresaria.Models
-@using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services
+@using TelefonicaEmpresarial.Services
 @attribute [Authorize]
 @inject UserManager<ApplicationUser> UserManager
 @inject ITelefonicaService TelefonicaService
+@inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
+@inject ILogger<Dashboard> Logger
 
 <div class="container mx-auto px-4 py-8">
     <h1 class="text-3xl font-bold mb-8 text-gray-800">Dashboard</h1>
 
-    @if (numeros == null)
+    @if (cargando)
     {
-        <div class="flex justify-center">
+        <div class="flex justify-center py-8">
             <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
         </div>
     }
-    else if (!numeros.Any())
+    else if (error != null)
+    {
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">
+            <strong class="font-bold">Error:</strong>
+            <span class="block sm:inline">@error</span>
+        </div>
+        <button @onclick="CargarDatos" class="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+            Intentar nuevamente
+        </button>
+    }
+    else if (numeros == null || !numeros.Any())
     {
         <div class="bg-white rounded-lg shadow-md p-8 mb-8">
             <h2 class="text-xl font-semibold mb-4">¡Bienvenido a tu Dashboard!</h2>
@@ -43,6 +56,24 @@
                 <p class="text-3xl font-bold">@numeros.Count(n => n.SMSHabilitado)</p>
             </div>
         </div>
+
+        @if (numerosPendientesPago.Any())
+        {
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-yellow-700">
+                            Tienes <strong>@numerosPendientesPago.Count()</strong> número(s) pendiente(s) de pago.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        }
 
         <div class="bg-white rounded-lg shadow-md overflow-hidden mb-8">
             <div class="flex justify-between items-center p-6 border-b">
@@ -70,13 +101,23 @@
                         @foreach (var numero in numeros)
                         {
                             <tr>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">@numero.Numero</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">@numero.NumeroRedireccion</td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm font-medium text-gray-900">@FormatearNumero(numero.Numero)</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @numero.NumeroRedireccion
+                                </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     @if (numero.Activo)
                                     {
                                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
                                             Activo
+                                        </span>
+                                    }
+                                    else if (EsNumeroPendientePago(numero))
+                                    {
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                            Pendiente de Pago
                                         </span>
                                     }
                                     else
@@ -105,8 +146,18 @@
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                     <div class="flex space-x-2">
-                                        <a href="/numeros/detalle/@numero.Id" class="text-indigo-600 hover:text-indigo-900">Detalles</a>
-                                        <a href="/numeros/editar/@numero.Id" class="text-blue-600 hover:text-blue-900">Editar</a>
+                                        @if (EsNumeroPendientePago(numero))
+                                        {
+                                            <button @onclick="() => CompletarPago(numero.Id)" class="text-green-600 hover:text-green-900 font-medium">Completar Pago</button>
+                                        }
+                                        else
+                                        {
+                                            <a href="/numeros/detalle/@numero.Id" class="text-indigo-600 hover:text-indigo-900">Detalles</a>
+                                            @if (numero.Activo)
+                                            {
+                                                <a href="/numeros/editar/@numero.Id" class="text-blue-600 hover:text-blue-900">Editar</a>
+                                            }
+                                        }
                                     </div>
                                 </td>
                             </tr>
@@ -121,25 +172,107 @@
 @code {
     private ApplicationUser? user;
     private List<NumeroTelefonico>? numeros;
+    private List<NumeroTelefonico> numerosPendientesPago = new List<NumeroTelefonico>();
+    private bool cargando = true;
+    private string? error;
 
-    [CascadingParameter]
-    private Task<AuthenticationState>? authenticationStateTask { get; set; }
+
+    [Inject]
+    private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
+
+
 
     protected override async Task OnInitializedAsync()
     {
-        if (authenticationStateTask != null)
-        {
-            var authState = await authenticationStateTask;
-            var userPrincipal = authState.User;
+      
+        await CargarDatos();
+    }
 
-            if (userPrincipal.Identity?.IsAuthenticated == true)
+    private async Task CargarDatos()
+    {
+        cargando = true;
+        error = null;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userClaims = authState.User;
+            user = await UserManager.GetUserAsync(userClaims);
+            if (user != null)
             {
-                user = await UserManager.GetUserAsync(userPrincipal);
-                if (user != null)
-                {
-                    numeros = await TelefonicaService.ObtenerNumerosPorUsuario(user.Id);
-                }
+                Logger.LogInformation($"Cargando números para usuario {user.Id}");
+                numeros = await TelefonicaService.ObtenerNumerosPorUsuario(user.Id);
+
+                // Identificar números pendientes de pago (inactivos con PlivoUuid "pendiente")
+                numerosPendientesPago = numeros
+                    .Where(n => !n.Activo && n.PlivoUuid == "pendiente")
+                    .ToList();
+
+                Logger.LogInformation($"Se cargaron {numeros.Count} números, {numerosPendientesPago.Count} pendientes de pago");
             }
         }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar datos del dashboard");
+            error = $"Ocurrió un error al cargar tus números: {ex.Message}";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+
+    private bool EsNumeroPendientePago(NumeroTelefonico numero)
+    {
+        return !numero.Activo && numero.PlivoUuid == "pendiente";
+    }
+
+    private async Task CompletarPago(int numeroId)
+    {
+        try
+        {
+            Logger.LogInformation($"Completando pago para número ID {numeroId}");
+
+            // Obtener URL de pago
+            var urlPago = await TelefonicaService.ObtenerURLPago(numeroId);
+
+            if (!string.IsNullOrEmpty(urlPago))
+            {
+                Logger.LogInformation($"Redirigiendo a URL de pago: {urlPago}");
+                await JSRuntime.InvokeVoidAsync("redirectTo", urlPago);
+
+            }
+            else
+            {
+                Logger.LogWarning($"No se pudo obtener URL de pago para número ID {numeroId}");
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo completar el pago. Por favor, contacte a soporte.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error al completar pago para número ID {numeroId}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private string FormatearNumero(string numero)
+    {
+        if (string.IsNullOrEmpty(numero))
+            return "";
+
+        // Formato para distintos países
+        if (numero.StartsWith("+52") && numero.Length >= 13)
+        {
+            // Formato México: +52 (XXX) XXX-XXXX
+            return $"+52 ({numero.Substring(3, 3)}) {numero.Substring(6, 3)}-{numero.Substring(9)}";
+        }
+        else if (numero.StartsWith("+1") && numero.Length >= 12)
+        {
+            // Formato US/Canadá: +1 (XXX) XXX-XXXX
+            return $"+1 ({numero.Substring(2, 3)}) {numero.Substring(5, 3)}-{numero.Substring(8)}";
+        }
+
+        return numero; // Si no encaja en ningún formato, retornar tal cual
     }
 }
