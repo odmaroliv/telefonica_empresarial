@@ -110,3 +110,4 @@ orleans.codegen.cs
 # Local application secrets
 appsettings.Development.json
 appsettings.Production.json
+/appsettings.json
