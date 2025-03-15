@@ -1,0 +1,156 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<AuthorizeView>
+    <Authorized>
+        <div>Redirigiendo al dashboard...</div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 py-12">
+            <div class="container mx-auto px-4">
+                <div class="max-w-7xl mx-auto">
+                    <div class="text-center mb-16">
+                        <h1 class="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
+                            Números Telefónicos Empresariales<br />
+                            <span class="text-blue-600">Para Emprendedores</span>
+                        </h1>
+                        <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+                            Adquiere números telefónicos para tu negocio, configura redirecciones a tu número personal y habilita la recepción de SMS para autenticaciones.
+                        </p>
+                    </div>
+
+                    <div class="flex flex-col md:flex-row gap-8 mb-20">
+                        <div class="bg-white rounded-xl shadow-md p-8 flex-1 transform transition-transform hover:scale-105">
+                            <div class="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center mb-6">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                </svg>
+                            </div>
+                            <h2 class="text-xl font-semibold mb-4">Números Profesionales</h2>
+                            <p class="text-gray-600">
+                                Consigue un número telefónico profesional para tu negocio sin necesidad de comprar un nuevo dispositivo.
+                            </p>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-md p-8 flex-1 transform transition-transform hover:scale-105">
+                            <div class="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center mb-6">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16l-4-4m0 0l4-4m-4 4h18" />
+                                </svg>
+                            </div>
+                            <h2 class="text-xl font-semibold mb-4">Redirección Instantánea</h2>
+                            <p class="text-gray-600">
+                                Recibe llamadas en tu número personal mientras mantienes tu privacidad con clientes y proveedores.
+                            </p>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-md p-8 flex-1 transform transition-transform hover:scale-105">
+                            <div class="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center mb-6">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                                </svg>
+                            </div>
+                            <h2 class="text-xl font-semibold mb-4">Recepción de SMS</h2>
+                            <p class="text-gray-600">
+                                Habilita la recepción de SMS para verificaciones y códigos de autenticación de servicios en línea.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                        <div class="md:flex">
+                            <div class="md:w-1/2 p-8 md:p-12">
+                                <h2 class="text-3xl font-bold mb-6">Empieza hoy mismo</h2>
+                                <ul class="space-y-4 mb-8">
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span>Números profesionales para tu negocio</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span>Redirección a tu número personal</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span>Recepción de SMS para autenticaciones</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span>Gestión sencilla desde tu dashboard</span>
+                                    </li>
+                                </ul>
+                                <div class="space-x-4">
+                                    <a href="/Identity/Account/Register" class="inline-block px-5 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors">
+                                        Registrarse
+                                    </a>
+                                    <a href="/Identity/Account/Login" class="inline-block px-5 py-3 bg-gray-200 text-gray-800 font-medium rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors">
+                                        Iniciar Sesión
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="md:w-1/2 bg-blue-600 text-white p-8 md:p-12">
+                                <div class="h-full flex flex-col justify-center">
+                                    <h3 class="text-2xl font-bold mb-4">Precios transparentes</h3>
+                                    <p class="mb-6">
+                                        Nuestros precios son claros y sin sorpresas. Solo pagas por lo que necesitas.
+                                    </p>
+                                    <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+                                        <div class="mb-4">
+                                            <span class="text-2xl font-bold">Desde $149 MXN</span>
+                                            <span class="text-sm opacity-75">/mes</span>
+                                        </div>
+                                        <ul class="space-y-2 mb-4">
+                                            <li class="flex items-center">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                                Número empresarial
+                                            </li>
+                                            <li class="flex items-center">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                                Redirección ilimitada
+                                            </li>
+                                            <li class="flex items-center">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                                Opción de SMS (+$49/mes)
+                                            </li>
+                                        </ul>
+                                        <p class="text-sm opacity-75">
+                                            Sin contratos a largo plazo. Cancela cuando quieras.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity != null && user.Identity.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/dashboard");
+        }
+    }
+}

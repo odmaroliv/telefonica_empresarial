@@ -1,0 +1,142 @@
+﻿/* Estilos adicionales más allá de Tailwind */
+
+/* Blazor Error UI */
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+}
+
+.validation-message {
+    color: #e53e3e;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Ajustes para los componentes de Identity */
+.identity-layout {
+    max-width: 28rem;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+    .identity-layout .card {
+        background-color: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        padding: 2rem;
+    }
+
+    .identity-layout h1,
+    .identity-layout h2,
+    .identity-layout h3 {
+        color: #1a202c;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+
+    .identity-layout h1 {
+        font-size: 1.5rem;
+    }
+
+    .identity-layout input,
+    .identity-layout select,
+    .identity-layout textarea {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #d2d6dc;
+        border-radius: 0.375rem;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    }
+
+        .identity-layout input:focus,
+        .identity-layout select:focus,
+        .identity-layout textarea:focus {
+            outline: none;
+            border-color: #3182ce;
+            box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.25);
+        }
+
+    .identity-layout button[type="submit"] {
+        background-color: #3182ce;
+        color: white;
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+        border-radius: 0.375rem;
+        border: none;
+        cursor: pointer;
+    }
+
+        .identity-layout button[type="submit"]:hover {
+            background-color: #2c5282;
+        }
+
+/* Grupos de formularios */
+.form-group {
+    margin-bottom: 1rem;
+}
+
+    .form-group label {
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 500;
+        margin-bottom: 0.25rem;
+    }
+
+/* Ajustes específicos para inputs number */
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+/* Customización para TablaAgGridBlazor */
+.ag-theme-alpine {
+    --ag-header-background-color: #f9fafb;
+    --ag-odd-row-background-color: #f3f4f6;
+    --ag-selected-row-background-color: rgba(59, 130, 246, 0.1);
+    --ag-font-size: 14px;
+    --ag-font-family: inherit;
+}
+
+    .ag-theme-alpine .ag-header-cell {
+        font-weight: 600;
+    }
+
+/* Botones de acción en tablas */
+.btn-table-action {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+}
+
+    .btn-table-action svg {
+        width: 0.875rem;
+        height: 0.875rem;
+        margin-right: 0.25rem;
+    }

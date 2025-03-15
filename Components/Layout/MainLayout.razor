@@ -1,0 +1,124 @@
+﻿@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IJSRuntime JSRuntime
+
+<div class="min-h-screen flex flex-col bg-gray-100">
+    <AuthorizeView Context="authContext">
+        <Authorized>
+            <header class="bg-white shadow-sm">
+                <div class="container mx-auto px-4">
+                    <div class="flex justify-between items-center py-4">
+                        <div class="flex items-center">
+                            <a href="/" class="text-xl font-bold text-blue-600">
+                                Telefónica Empresarial
+                            </a>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <div class="relative" @onclick="ToggleUserMenu" @onclick:stopPropagation>
+                                <button type="button" class="flex items-center text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                    <span class="mr-2">@authContext.User.Identity?.Name</span>
+                                    <div class="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white">
+                                        @if (authContext.User.Identity?.Name != null && authContext.User.Identity.Name.Length > 0)
+                                        {
+                                            @authContext.User.Identity.Name[0]
+                                        }
+                                    </div>
+                                </button>
+                                @if (showUserMenu)
+                                {
+                                    <div class="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 py-1">
+                                        <a href="/Identity/Account/Manage" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Mi Perfil</a>
+                                        <form method="post" action="/Identity/Account/LogOut">
+                                            <button type="submit" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Cerrar Sesión</button>
+                                        </form>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <div class="flex-1">
+                <div class="container mx-auto">
+                    <div class="flex flex-col md:flex-row">
+                        <nav class="md:w-64 bg-white shadow-md p-4 m-4 md:mr-0 rounded-lg h-fit">
+                            <div class="space-y-1">
+                                <NavLink href="/dashboard" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                                        <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+                                    </svg>
+                                    Dashboard
+                                </NavLink>
+                                <NavLink href="/numeros/comprar" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
+                                    </svg>
+                                    Comprar Número
+                                </NavLink>
+                                <AuthorizeView Roles="Admin" Context="adminContext">
+                                    <NavLink href="/admin" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+                                        </svg>
+                                        Administración
+                                    </NavLink>
+                                </AuthorizeView>
+                            </div>
+                        </nav>
+                        <main class="flex-1 p-4">
+                            @Body
+                        </main>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="bg-white shadow-inner mt-8">
+                <div class="container mx-auto px-4 py-6">
+                    <div class="flex flex-col md:flex-row justify-between items-center">
+                        <div class="mb-4 md:mb-0">
+                            <p class="text-sm text-gray-500">&copy; @DateTime.Now.Year - Telefónica Empresarial</p>
+                        </div>
+                        <div class="flex space-x-6">
+                            <a href="/terminos" class="text-sm text-gray-500 hover:text-gray-700">Términos y Condiciones</a>
+                            <a href="/privacidad" class="text-sm text-gray-500 hover:text-gray-700">Política de Privacidad</a>
+                            <a href="/soporte" class="text-sm text-gray-500 hover:text-gray-700">Soporte</a>
+                        </div>
+                    </div>
+                </div>
+            </footer>
+        </Authorized>
+        <NotAuthorized>
+            <div class="flex-1">
+                @Body
+            </div>
+        </NotAuthorized>
+    </AuthorizeView>
+</div>
+
+@code {
+    private bool showUserMenu = false;
+
+    private void ToggleUserMenu()
+    {
+        showUserMenu = !showUserMenu;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("document.addEventListener", "click", DotNetObjectReference.Create(this));
+        }
+    }
+
+    [JSInvokable]
+    public void HandleDocumentClick()
+    {
+        if (showUserMenu)
+        {
+            showUserMenu = false;
+            StateHasChanged();
+        }
+    }
+}

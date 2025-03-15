@@ -1,0 +1,16 @@
+﻿@inject NavigationManager Navigation
+
+<div class="container text-center py-5">
+    <p>Redirigiendo al inicio de sesión...</p>
+</div>
+
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Redirección usando JavaScript para evitar problemas con el ciclo de vida
+            Navigation.NavigateTo($"/Identity/Account/Login?returnUrl={Uri.EscapeDataString(Navigation.Uri)}");
+        }
+    }
+}

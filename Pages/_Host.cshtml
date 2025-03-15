@@ -1,0 +1,66 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.Components.Web
+@using TelefonicaEmpresaria.Components
+@namespace TelefonicaEmpresarial.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="~/" />
+    <title>Telefónica Empresarial</title>
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="css/site.css" rel="stylesheet" />
+
+    <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
+</head>
+<body class="bg-gray-100">
+    <component type="typeof(Routes)" render-mode="ServerPrerendered" />
+
+    <div id="blazor-error-ui" class="hidden">
+        <div class="bg-red-600 text-white p-4 flex justify-between items-center">
+            <div>
+                <span>Ha ocurrido un error en la aplicación.</span>
+                <a href="" class="underline ml-2">Recargar</a>
+                <a class="underline ml-2" href="">Reiniciar</a>
+            </div>
+            <button class="text-white" onclick="document.getElementById('blazor-error-ui').style.display = 'none';">
+                <span>&times;</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Stripe.js para procesar pagos -->
+    <script src="https://js.stripe.com/v3/"></script>
+
+    <script src="_framework/blazor.server.js"></script>
+
+    <script>
+        // Función para redirigir a Stripe Checkout
+        window.redirectToStripeCheckout = (url) => {
+            window.location.href = url;
+        };
+
+        // Formatear números de teléfono
+        window.formatPhoneNumber = (input) => {
+            // Eliminar todo excepto dígitos y el signo +
+            let cleaned = ('' + input).replace(/\D/g, '');
+
+            // Verificar si comienza con + y el código de México (52)
+            if (input.startsWith('+')) {
+                cleaned = '+' + cleaned;
+            }
+
+            // Agrega formato mexicano: +52 (XXX) XXX-XXXX
+            if (cleaned.startsWith('+52') && cleaned.length >= 12) {
+                return `+52 (${cleaned.substring(3, 6)}) ${cleaned.substring(6, 9)}-${cleaned.substring(9, 13)}`;
+            }
+
+            return input; // Retorna el original si no hay un formato específico
+        };
+    </script>
+</body>
+</html>

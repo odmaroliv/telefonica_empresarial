@@ -1,0 +1,44 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(Program).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)">
+                <NotAuthorized Context="authContext">
+                    @if (authContext.User?.Identity?.IsAuthenticated != true)
+                    {
+                        <RedirectToLogin />
+                    }
+                    else
+                    {
+                        <div class="container mx-auto px-4 py-16 text-center">
+                            <div class="bg-white rounded-lg shadow-md p-8 max-w-md mx-auto">
+                                <h1 class="text-xl font-bold mb-4">Acceso Denegado</h1>
+                                <p class="mb-6 text-gray-600">No tienes permiso para acceder a esta página.</p>
+                                <a href="/" class="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                                    Volver al inicio
+                                </a>
+                            </div>
+                        </div>
+                    }
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <PageTitle>No encontrado</PageTitle>
+            <LayoutView Layout="@typeof(Layout.MainLayout)">
+                <div class="container mx-auto px-4 py-16 text-center">
+                    <div class="bg-white rounded-lg shadow-md p-8 max-w-md mx-auto">
+                        <h1 class="text-xl font-bold mb-4">Página no encontrada</h1>
+                        <p class="mb-6 text-gray-600">Lo sentimos, la dirección que has solicitado no existe.</p>
+                        <a href="/" class="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                            Volver al inicio
+                        </a>
+                    </div>
+                </div>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>

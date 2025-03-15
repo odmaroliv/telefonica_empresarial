@@ -1,0 +1,274 @@
+﻿@page "/numeros/editar/{Id:int}"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using TelefonicaEmpresaria.Models
+@using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services
+@attribute [Authorize]
+@inject UserManager<ApplicationUser> UserManager
+@inject ITelefonicaService TelefonicaService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<div class="container mx-auto px-4 py-8">
+    <div class="flex items-center mb-8">
+        <button @onclick="Regresar" class="mr-3 text-gray-500 hover:text-gray-700">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+        </button>
+        <h1 class="text-3xl font-bold text-gray-800">Editar Configuración</h1>
+    </div>
+
+    @if (numero == null)
+    {
+        <div class="flex justify-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+    }
+    else if (!numero.Activo)
+    {
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="text-center py-8">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <h2 class="text-xl font-semibold mb-2">Número Inactivo</h2>
+                <p class="text-gray-600 mb-6">Este número no está activo y no puede ser modificado.</p>
+                <button @onclick="Regresar" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                    Volver al Dashboard
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-6 text-gray-800">Número: @FormatearNumero(numero.Numero)</h2>
+
+            <div class="mb-8">
+                <h3 class="text-lg font-medium mb-4">Configuración de Redirección</h3>
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Número a redireccionar</label>
+                    <input type="tel" @bind="numeroRedireccion" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="+52 1 123 456 7890" />
+                    @if (!string.IsNullOrEmpty(errorRedireccion))
+                    {
+                        <p class="mt-1 text-sm text-red-600">@errorRedireccion</p>
+                    }
+                </div>
+                <button @onclick="ActualizarRedireccion" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled="@cargandoRedireccion">
+                    @if (cargandoRedireccion)
+                    {
+                        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Actualizando...</span>
+                    }
+                    else
+                    {
+                        <span>Actualizar Redirección</span>
+                    }
+                </button>
+            </div>
+
+            <div class="border-t pt-6">
+                <h3 class="text-lg font-medium mb-4">Servicio SMS</h3>
+                <div class="bg-gray-50 p-4 rounded-lg mb-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-800 font-medium">Recepción de SMS</p>
+                            <p class="text-sm text-gray-500">Permite recibir mensajes de texto para autenticación y códigos de verificación</p>
+                        </div>
+                        <div class="ml-4">
+                            @if (numero.SMSHabilitado)
+                            {
+                                <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                    Habilitado
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                    Deshabilitado
+                                </span>
+                            }
+                        </div>
+                    </div>
+
+                    @if (numero.SMSHabilitado && numero.CostoSMS.HasValue)
+                    {
+                        <div class="mt-2 pt-2 border-t text-sm">
+                            <p>Costo Mensual: $@numero.CostoSMS.Value.ToString("0.00") MXN</p>
+                        </div>
+                    }
+                </div>
+
+                @if (numero.SMSHabilitado)
+                {
+                    <button @onclick="DeshabilitarSMS" class="inline-flex items-center px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled="@cargandoSMS">
+                        @if (cargandoSMS)
+                        {
+                            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span>Procesando...</span>
+                        }
+                        else
+                        {
+                            <span>Deshabilitar SMS</span>
+                        }
+                    </button>
+                }
+                else
+                {
+                    <button @onclick="HabilitarSMS" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled="@cargandoSMS">
+                        @if (cargandoSMS)
+                        {
+                            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span>Procesando...</span>
+                        }
+                        else
+                        {
+                            <span>Habilitar SMS</span>
+                        }
+                    </button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private NumeroTelefonico? numero;
+    private string numeroRedireccion = "";
+    private string errorRedireccion = "";
+    private bool cargandoRedireccion = false;
+    private bool cargandoSMS = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarNumero();
+    }
+
+    private async Task CargarNumero()
+    {
+        numero = await TelefonicaService.ObtenerNumeroDetalle(Id);
+        if (numero == null)
+        {
+            NavigationManager.NavigateTo("/dashboard");
+            return;
+        }
+
+        numeroRedireccion = numero.NumeroRedireccion;
+    }
+
+    private async Task ActualizarRedireccion()
+    {
+        // Validar número de redirección
+        if (string.IsNullOrWhiteSpace(numeroRedireccion))
+        {
+            errorRedireccion = "El número de redirección es obligatorio";
+            return;
+        }
+
+        if (!numeroRedireccion.StartsWith("+"))
+        {
+            errorRedireccion = "El número debe incluir el código de país (ej. +52)";
+            return;
+        }
+
+        errorRedireccion = "";
+        cargandoRedireccion = true;
+
+        try
+        {
+            var resultado = await TelefonicaService.ActualizarRedireccion(Id, numeroRedireccion);
+            if (resultado)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Redirección actualizada correctamente");
+                await CargarNumero();
+            }
+            else
+            {
+                errorRedireccion = "No se pudo actualizar la redirección. Intente nuevamente.";
+            }
+        }
+        finally
+        {
+            cargandoRedireccion = false;
+        }
+    }
+
+    private async Task HabilitarSMS()
+    {
+        cargandoSMS = true;
+        try
+        {
+            var resultado = await TelefonicaService.HabilitarSMS(Id);
+            if (resultado)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "SMS habilitado correctamente");
+                await CargarNumero();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo habilitar el servicio SMS. Intente nuevamente.");
+            }
+        }
+        finally
+        {
+            cargandoSMS = false;
+        }
+    }
+
+    private async Task DeshabilitarSMS()
+    {
+        cargandoSMS = true;
+        try
+        {
+            var resultado = await TelefonicaService.DeshabilitarSMS(Id);
+            if (resultado)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "SMS deshabilitado correctamente");
+                await CargarNumero();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo deshabilitar el servicio SMS. Intente nuevamente.");
+            }
+        }
+        finally
+        {
+            cargandoSMS = false;
+        }
+    }
+
+    private void Regresar()
+    {
+        NavigationManager.NavigateTo($"/numeros/detalle/{Id}");
+    }
+
+    private string FormatearNumero(string? numero)
+    {
+        if (string.IsNullOrEmpty(numero))
+            return "";
+
+        // Formato simple para números mexicanos: +52 (XXX) XXX-XXXX
+        if (numero.StartsWith("+52") && numero.Length >= 13)
+        {
+            return $"+52 ({numero.Substring(3, 3)}) {numero.Substring(6, 3)}-{numero.Substring(9)}";
+        }
+
+        return numero;
+    }
+}
