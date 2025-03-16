@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Identity
 @using System.Security.Claims
 @using TelefonicaEmpresaria.Models
+@using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services
 @using TelefonicaEmpresarial.Services
 @attribute [Authorize]
 @inject UserManager<ApplicationUser> UserManager
@@ -11,9 +12,36 @@
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
 @inject ILogger<Dashboard> Logger
+@inject ISaldoService SaldoService
 
 <div class="container mx-auto px-4 py-8">
     <h1 class="text-3xl font-bold mb-8 text-gray-800">Dashboard</h1>
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h2 class="text-xl font-semibold mb-2 text-gray-800">Mi Saldo</h2>
+                @if (cargandoSaldo)
+                {
+                    <div class="animate-pulse h-6 w-20 bg-gray-200 rounded"></div>
+                }
+                else if (errorSaldo != null)
+                {
+                    <p class="text-red-500 text-sm">@errorSaldo</p>
+                }
+                else
+                {
+                    <p class="text-2xl font-bold text-blue-600">$@saldoActual.ToString("0.00") MXN</p>
+                }
+            </div>
+            <a href="/saldo" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" />
+                    <path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clip-rule="evenodd" />
+                </svg>
+                Gestionar Saldo
+            </a>
+        </div>
+    </div>
 
     @if (cargando)
     {
@@ -175,6 +203,10 @@
     private List<NumeroTelefonico> numerosPendientesPago = new List<NumeroTelefonico>();
     private bool cargando = true;
     private string? error;
+    private decimal saldoActual = 0;
+    private bool cargandoSaldo = true;
+    private string? errorSaldo;
+
 
 
     [Inject]
@@ -184,8 +216,31 @@
 
     protected override async Task OnInitializedAsync()
     {
-      
+        
         await CargarDatos();
+        await CargarSaldoUsuario();
+    }
+    private async Task CargarSaldoUsuario()
+    {
+        cargandoSaldo = true;
+        errorSaldo = null;
+
+        try
+        {
+            if (user != null)
+            {
+                saldoActual = await SaldoService.ObtenerSaldoUsuario(user.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar saldo del usuario");
+            errorSaldo = "No se pudo cargar tu información de saldo.";
+        }
+        finally
+        {
+            cargandoSaldo = false;
+        }
     }
 
     private async Task CargarDatos()

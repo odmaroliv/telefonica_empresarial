@@ -1,0 +1,216 @@
+﻿@page "/saldo/recarga/exito"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using TelefonicaEmpresaria.Models
+@using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services
+@using TelefonicaEmpresarial.Services
+@attribute [Authorize]
+@inject UserManager<ApplicationUser> UserManager
+@inject ISaldoService SaldoService
+@inject IStripeService StripeService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ILogger<RecargaExito> Logger
+
+<div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div class="max-w-md w-full bg-white rounded-lg shadow-xl overflow-hidden">
+        <div class="py-16 px-8 text-center">
+            @if (procesando)
+            {
+                <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mx-auto mb-6"></div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Procesando tu recarga</h2>
+                <p class="text-gray-600">
+                    Estamos confirmando tu pago.<br />
+                    Por favor espera un momento...
+                </p>
+            }
+            else if (error != null)
+            {
+                <div class="bg-red-100 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Ocurrió un problema</h2>
+                <p class="text-gray-600 mb-6">
+                    @error
+                </p>
+                <div class="mt-8">
+                    <button @onclick="IrASaldo" class="px-5 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                        Volver al saldo
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div class="bg-green-100 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">¡Recarga exitosa!</h2>
+                <p class="text-gray-600 mb-6">
+                    Tu recarga se ha procesado correctamente.<br />
+                    Tu saldo ha sido actualizado.
+                </p>
+                <div class="bg-gray-50 rounded-lg p-6 mb-8">
+                    <div class="flex justify-between mb-2">
+                        <span class="font-medium">Monto de recarga:</span>
+                        <span>$@montoRecarga.ToString("0.00") MXN</span>
+                    </div>
+                    <div class="flex justify-between mb-2">
+                        <span class="font-medium">Fecha:</span>
+                        <span>@DateTime.Now.ToString("dd/MM/yyyy HH:mm")</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="font-medium">Saldo actual:</span>
+                        <span class="text-green-600 font-medium">$@saldoActual.ToString("0.00") MXN</span>
+                    </div>
+                </div>
+                <div class="mt-8">
+                    <button @onclick="IrASaldo" class="px-5 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                        Ir a mi saldo
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool procesando = true;
+    private string? error;
+    private decimal montoRecarga = 0;
+    private decimal saldoActual = 0;
+    private string? sessionId;
+    private ApplicationUser? user;
+
+    [Inject]
+    private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Obtener session_id del query parameter
+            var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+            if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("session_id", out var sessionIdValue))
+            {
+                sessionId = sessionIdValue;
+                Logger.LogInformation($"Session ID recibido: {sessionId}");
+
+                // Procesar la recarga
+                await ProcesarRecarga();
+            }
+            else
+            {
+                error = "No se encontró la información de la sesión de pago.";
+                Logger.LogWarning("No se recibió session_id en los parámetros");
+            }
+        }
+        catch (Exception ex)
+        {
+            error = $"Ocurrió un error al procesar tu recarga: {ex.Message}";
+            Logger.LogError(ex, "Error al inicializar la página de éxito de recarga");
+        }
+        finally
+        {
+            procesando = false;
+        }
+    }
+
+    private async Task ProcesarRecarga()
+    {
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            error = "Información de sesión no válida.";
+            return;
+        }
+
+        try
+        {
+            // Obtener el usuario actual
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            user = await UserManager.GetUserAsync(authState.User);
+
+            if (user == null)
+            {
+                error = "No se pudo verificar tu identidad.";
+                return;
+            }
+            // PRIMERO verifica si la transacción ya fue procesada
+            bool transaccionExistente = await SaldoService.ExisteTransaccion(sessionId);
+
+            if (transaccionExistente)
+            {
+                // La transacción ya fue procesada, solo obtén el saldo actual
+                saldoActual = await SaldoService.ObtenerSaldoUsuario(user.Id);
+                Logger.LogInformation($"La transacción {sessionId} ya fue procesada anteriormente");
+                return; // Importante: salir del método para evitar doble procesamiento
+            }
+
+            // Verificar que el pago se completó correctamente
+            var pagoCompletado = await StripeService.VerificarPagoCompletado(sessionId);
+
+            if (!pagoCompletado)
+            {
+                error = "El pago no se ha completado correctamente. Por favor, contacta a soporte.";
+                return;
+            }
+
+            // Obtener detalles de la sesión
+            var sesionStripe = await StripeService.ObtenerDetallesSesion(sessionId);
+
+            if (sesionStripe == null)
+            {
+                error = "No se pudieron obtener los detalles del pago.";
+                return;
+            }
+
+            // Calcular el monto de la recarga (dividir por 100 porque Stripe usa centavos)
+            montoRecarga = (decimal)sesionStripe.AmountTotal / 100;
+
+            // Verificar si ya se procesó la transacción
+            // Como no tenemos acceso directo a _context, usamos el SaldoService para verificar
+            var movimientos = await SaldoService.ObtenerMovimientosUsuario(user.Id, 10);
+            var movimientoProcesado = movimientos.Any(m => m.ReferenciaExterna == sessionId);
+
+            if (!movimientoProcesado)
+            {
+                // El webhook aún no ha procesado la transacción
+                // Procesamos manualmente si el webhook no lo ha hecho
+                var concepto = "Recarga de saldo";
+                var recargaExitosa = await SaldoService.AgregarSaldo(user.Id, montoRecarga, concepto, sessionId);
+
+                if (!recargaExitosa)
+                {
+                    error = "Ocurrió un error al actualizar tu saldo. Contacta a soporte.";
+                    Logger.LogError($"Error al agregar saldo para usuario {user.Id}, monto: {montoRecarga}");
+                    return;
+                }
+
+                Logger.LogInformation($"Recarga exitosa de ${montoRecarga} para usuario {user.Id} desde la página de éxito");
+            }
+            else
+            {
+                Logger.LogInformation($"La recarga para la sesión {sessionId} ya fue procesada anteriormente");
+            }
+
+            // Obtener el saldo actualizado
+            saldoActual = await SaldoService.ObtenerSaldoUsuario(user.Id);
+        }
+        catch (Exception ex)
+        {
+            error = $"Ocurrió un error al procesar tu recarga: {ex.Message}";
+            Logger.LogError(ex, "Error al procesar recarga");
+        }
+    }
+
+    private void IrASaldo()
+    {
+        NavigationManager.NavigateTo("/saldo");
+    }
+}

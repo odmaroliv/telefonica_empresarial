@@ -3,6 +3,7 @@ using Polly;
 using Polly.Retry;
 using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data;
 using TelefonicaEmpresaria.Models;
+using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services;
 
 namespace TelefonicaEmpresarial.Services
 {
@@ -18,6 +19,12 @@ namespace TelefonicaEmpresarial.Services
         Task<NumeroTelefonico?> ObtenerNumeroDetalle(int numeroId);
         Task<(decimal CostoNumero, decimal CostoSMS)> ObtenerCostos(string numeroSeleccionado);
         Task<string?> ObtenerURLPago(int numeroId);
+        //Saldo
+        Task<decimal> CalcularCostoMensualNumero(string numero, bool smsHabilitado);
+        Task<bool> VerificarSaldoParaCompra(string userId, string numero, bool smsHabilitado);
+        Task<bool> DescontarSaldoMensual(NumeroTelefonico numero);
+        Task<bool> ProcesarConsumoLlamada(NumeroTelefonico numero, LogLlamada logLlamada);
+
     }
 
     public class TelefonicaService : ITelefonicaService
@@ -27,17 +34,20 @@ namespace TelefonicaEmpresarial.Services
         private readonly IStripeService _stripeService;
         private readonly ILogger<TelefonicaService> _logger;
         private readonly AsyncRetryPolicy _retryPolicy;
+        private readonly ISaldoService _saldoService;
 
         public TelefonicaService(
             ApplicationDbContext context,
             ITwilioService twilioService,
             IStripeService stripeService,
-            ILogger<TelefonicaService> logger)
+            ILogger<TelefonicaService> logger,
+            ISaldoService saldoService)
         {
             _context = context;
             _twilioService = twilioService;
             _stripeService = stripeService;
             _logger = logger;
+            _saldoService = saldoService;
 
             // Configurar política de reintentos para operaciones de base de datos
             _retryPolicy = Polly.Policy
@@ -139,43 +149,43 @@ namespace TelefonicaEmpresarial.Services
             {
                 _logger.LogInformation($"Iniciando proceso de compra del número {numero} para usuario {usuario.Id}");
 
-                // 1. Verificar que el usuario tenga StripeCustomerId
-                if (string.IsNullOrEmpty(usuario.StripeCustomerId))
-                {
-                    _logger.LogInformation($"Creando cliente en Stripe para usuario {usuario.Id}");
+                // 1. Calcular el costo mensual
+                var costoMensual = await CalcularCostoMensualNumero(numero, habilitarSMS);
 
-                    usuario.StripeCustomerId = await _stripeService.CrearClienteStripe(usuario);
-                    await _retryPolicy.ExecuteAsync(async () =>
-                    {
-                        _context.Users.Update(usuario);
-                        await _context.SaveChangesAsync();
-                    });
+                // 2. Verificar si hay saldo suficiente
+                var saldoSuficiente = await _saldoService.VerificarSaldoSuficiente(usuario.Id, costoMensual);
+
+                if (!saldoSuficiente)
+                {
+                    _logger.LogWarning($"Saldo insuficiente para comprar número. UserId: {usuario.Id}, Costo: {costoMensual}");
+                    return (null, "Saldo insuficiente para completar la compra. Por favor, recarga tu saldo.");
                 }
 
-                // 2. Obtener costos
+                // 3. Obtener costos detallados
                 var (costoNumero, costoSMS) = await ObtenerCostos(numero);
 
-                // 3. Crear sesión de checkout en Stripe
-                var checkoutSession = await _stripeService.CrearSesionCompra(
-                    usuario.StripeCustomerId,
-                    numero,
-                    costoNumero,
-                    habilitarSMS ? costoSMS : null);
+                // 4. Comprar el número en Twilio
+                // Nota: Esto podría ser una compra real o un placeholder según tu implementación
+                var numeroComprado = await _twilioService.ComprarNumero(numero);
 
-                _logger.LogInformation($"Sesión de checkout creada: {checkoutSession.SessionId}");
+                if (numeroComprado == null)
+                {
+                    _logger.LogError($"Error al comprar número en Twilio: {numero}");
+                    return (null, "Error al adquirir el número. Por favor, intenta con otro número.");
+                }
 
-                // 4. Registrar el número en nuestra base de datos (sin comprar aún en Twilio)
+                // 5. Registrar el número en nuestra base de datos
                 var fechaActual = DateTime.UtcNow;
                 var nuevoNumero = new NumeroTelefonico
                 {
                     Numero = numero,
-                    PlivoUuid = "pendiente", // Se actualizará después del pago
+                    PlivoUuid = numeroComprado.Sid, // Ahora usamos el Sid real de Twilio
                     UserId = usuario.Id,
                     NumeroRedireccion = numeroRedireccion,
                     FechaCompra = fechaActual,
                     FechaExpiracion = fechaActual.AddMonths(1),
                     CostoMensual = costoNumero,
-                    Activo = false, // Se activa cuando se completa el pago
+                    Activo = true, // Activado inmediatamente ya que se cobra por adelantado
                     SMSHabilitado = habilitarSMS,
                     CostoSMS = habilitarSMS ? costoSMS : null
                 };
@@ -188,33 +198,37 @@ namespace TelefonicaEmpresarial.Services
 
                 _logger.LogInformation($"Número registrado en base de datos con ID {nuevoNumero.Id}");
 
-                // 5. Crear transacción pendiente
-                await _retryPolicy.ExecuteAsync(async () =>
-                {
-                    _context.Transacciones.Add(new Transaccion
-                    {
-                        UserId = usuario.Id,
-                        NumeroTelefonicoId = nuevoNumero.Id,
-                        Fecha = fechaActual,
-                        Monto = habilitarSMS ? costoNumero + costoSMS : costoNumero,
-                        Concepto = $"Compra de número - {numero}",
-                        StripePaymentId = checkoutSession.SessionId,
-                        Status = "Pendiente"
-                    });
-                    await _context.SaveChangesAsync();
-                });
+                // 6. Configurar redirección
+                var redirConfigured = await _twilioService.ConfigurarRedireccion(numeroComprado.Sid, numeroRedireccion);
 
-                _logger.LogInformation($"Transacción pendiente creada para el número {numero}");
+                if (!redirConfigured)
+                {
+                    _logger.LogWarning($"Error al configurar redirección para {numeroComprado.Sid} a {numeroRedireccion}");
+                    // Continuamos a pesar del error, lo intentaremos más tarde
+                }
+
+                // 7. Descontar el saldo
+                string concepto = $"Compra de número {numero}" + (habilitarSMS ? " con SMS" : "");
+                var saldoDescontado = await _saldoService.DescontarSaldo(
+                    usuario.Id,
+                    costoMensual,
+                    concepto,
+                    nuevoNumero.Id);
+
+                if (!saldoDescontado)
+                {
+                    _logger.LogError($"Error al descontar saldo para {usuario.Id}, monto: {costoMensual}");
+                    // A pesar del error, continuamos ya que el número ya fue comprado
+                }
 
                 return (nuevoNumero, string.Empty);
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error en proceso de compra: {ex.Message}");
+                _logger.LogError(ex, $"Error en proceso de compra: {ex.Message}");
                 return (null, $"Error al comprar número: {ex.Message}");
             }
         }
-
         public async Task<string?> ObtenerURLPago(int numeroId)
         {
             try
@@ -486,5 +500,110 @@ namespace TelefonicaEmpresarial.Services
                 return null;
             }
         }
+        public async Task<decimal> CalcularCostoMensualNumero(string numero, bool smsHabilitado)
+        {
+            try
+            {
+                var (costoNumero, costoSMS) = await ObtenerCostos(numero);
+                return smsHabilitado ? costoNumero + costoSMS : costoNumero;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al calcular costo mensual para {numero}");
+                throw;
+            }
+        }
+
+        public async Task<bool> VerificarSaldoParaCompra(string userId, string numero, bool smsHabilitado)
+        {
+            try
+            {
+                var costoMensual = await CalcularCostoMensualNumero(numero, smsHabilitado);
+                return await _saldoService.VerificarSaldoSuficiente(userId, costoMensual);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al verificar saldo para compra: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> DescontarSaldoMensual(NumeroTelefonico numero)
+        {
+            try
+            {
+                decimal costoTotal = numero.CostoMensual;
+                if (numero.SMSHabilitado && numero.CostoSMS.HasValue)
+                {
+                    costoTotal += numero.CostoSMS.Value;
+                }
+
+                string concepto = $"Cargo mensual - Número {numero.Numero}";
+
+                return await _saldoService.DescontarSaldo(
+                    numero.UserId,
+                    costoTotal,
+                    concepto,
+                    numero.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al descontar saldo mensual para número ID {numero.Id}");
+                return false;
+            }
+        }
+
+        public async Task<bool> ProcesarConsumoLlamada(NumeroTelefonico numero, LogLlamada logLlamada)
+        {
+            try
+            {
+                // Solo procesar llamadas completadas
+                if (logLlamada.Estado != "completed" && !logLlamada.Estado.Contains("complete"))
+                {
+                    return true; // No cobrar por llamadas no completadas
+                }
+
+                // Extraer el país del número de origen (simplificado)
+                string pais = "MX"; // Por defecto México
+                if (logLlamada.NumeroOrigen.StartsWith("+1"))
+                {
+                    pais = "US";
+                }
+                else if (logLlamada.NumeroOrigen.StartsWith("+34"))
+                {
+                    pais = "ES";
+                }
+
+                // Calcular el costo de la llamada
+                decimal costoLlamada = await _saldoService.CalcularCostoLlamada(logLlamada.Duracion, pais);
+
+                if (costoLlamada <= 0)
+                {
+                    return true; // No cobrar por llamadas sin costo
+                }
+
+                // Formato de duración para el concepto
+                TimeSpan duracion = TimeSpan.FromSeconds(logLlamada.Duracion);
+                string duracionFormateada = $"{duracion.Minutes}:{duracion.Seconds:D2}";
+
+                // Concepto para el movimiento
+                string concepto = $"Llamada de {logLlamada.NumeroOrigen} ({duracionFormateada} min)";
+
+                // Descontar el saldo
+                return await _saldoService.DescontarSaldo(
+                    numero.UserId,
+                    costoLlamada,
+                    concepto,
+                    numero.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al procesar consumo de llamada para número ID {numero.Id}");
+                return false;
+            }
+        }
+
+
+
     }
 }

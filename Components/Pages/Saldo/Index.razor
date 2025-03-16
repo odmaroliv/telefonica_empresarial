@@ -1,0 +1,366 @@
+﻿@page "/saldo"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
+@using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data
+@using TelefonicaEmpresaria.Models
+@using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services
+@using TelefonicaEmpresarial.Services
+@attribute [Authorize]
+@inject UserManager<ApplicationUser> UserManager
+@inject ISaldoService SaldoService
+@inject IStripeService StripeService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@inject ILogger<Index> Logger
+
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-8 text-gray-800">Mi Saldo</h1>
+
+    @if (cargando)
+    {
+        <div class="flex justify-center py-8">
+            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+    }
+    else if (error != null)
+    {
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">
+            <strong class="font-bold">Error:</strong>
+            <span class="block sm:inline">@error</span>
+        </div>
+        <button @onclick="CargarDatos" class="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+            Intentar nuevamente
+        </button>
+    }
+    else
+    {
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-md p-6 text-white">
+                <h2 class="text-xl font-semibold mb-2">Saldo Disponible</h2>
+                <p class="text-3xl font-bold">$@saldoActual.ToString("0.00") MXN</p>
+                <div class="mt-4">
+                    <button @onclick="MostrarModalRecarga" class="mt-2 px-4 py-2 bg-white text-blue-600 font-medium rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white transition-colors">
+                        Recargar Saldo
+                    </button>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-semibold mb-4 text-gray-800">Información de Consumo</h2>
+                <div class="space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Números activos:</span>
+                        <span class="font-medium">@(numerosActivos)</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Próximo cargo mensual:</span>
+                        <span class="font-medium">$@proximoCargo.ToString("0.00") MXN</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Promedio de consumo diario:</span>
+                        <span class="font-medium">$@consumoPromedioDiario.ToString("0.00") MXN</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md overflow-hidden mb-8">
+            <div class="p-6 border-b">
+                <h2 class="text-xl font-semibold text-gray-800">Historial de Movimientos</h2>
+            </div>
+            <div class="overflow-x-auto">
+                @if (movimientos == null || !movimientos.Any())
+                {
+                    <div class="text-center py-8 text-gray-500">
+                        <p>No hay movimientos registrados.</p>
+                    </div>
+                }
+                else
+                {
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Concepto</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monto</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            @foreach (var movimiento in movimientos)
+                            {
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        @movimiento.Fecha.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        @movimiento.Concepto
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        @if (movimiento.TipoMovimiento == "Recarga")
+                                        {
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                                Recarga
+                                            </span>
+                                        }
+                                        else if (movimiento.TipoMovimiento == "Consumo")
+                                        {
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800">
+                                                Consumo
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                                @movimiento.TipoMovimiento
+                                            </span>
+                                        }
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        @if (movimiento.TipoMovimiento == "Recarga")
+                                        {
+                                            <span class="text-green-600 font-medium">+$@movimiento.Monto.ToString("0.00")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-red-600 font-medium">-$@movimiento.Monto.ToString("0.00")</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@if (mostrarModalRecarga)
+{
+    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg overflow-hidden shadow-xl max-w-md w-full mx-4">
+            <div class="p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Recargar Saldo</h3>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Monto a recargar (MXN)</label>
+                    <div class="grid grid-cols-3 gap-2 mb-4">
+                        <button @onclick="() => montoRecarga = 100" class="@(montoRecarga == 100 ? "bg-blue-100 border-blue-500" : "bg-gray-50 border-gray-200") border-2 rounded p-2 text-center hover:bg-blue-50">
+                            $100
+                        </button>
+                        <button @onclick="() => montoRecarga = 200" class="@(montoRecarga == 200 ? "bg-blue-100 border-blue-500" : "bg-gray-50 border-gray-200") border-2 rounded p-2 text-center hover:bg-blue-50">
+                            $200
+                        </button>
+                        <button @onclick="() => montoRecarga = 500" class="@(montoRecarga == 500 ? "bg-blue-100 border-blue-500" : "bg-gray-50 border-gray-200") border-2 rounded p-2 text-center hover:bg-blue-50">
+                            $500
+                        </button>
+                    </div>
+                    <input type="number" @bind="montoRecarga" min="50" step="10" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Monto personalizado" />
+                    @if (!string.IsNullOrEmpty(errorRecarga))
+                    {
+                        <p class="mt-1 text-sm text-red-600">@errorRecarga</p>
+                    }
+                </div>
+                <div class="mt-6 flex justify-end space-x-3">
+                    <button @onclick="OcultarModalRecarga" class="px-4 py-2 bg-gray-200 text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">
+                        Cancelar
+                    </button>
+                    <button @onclick="ProcesarRecarga" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                        Proceder al Pago
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ApplicationUser? user;
+    private decimal saldoActual = 0;
+    private List<MovimientoSaldo>? movimientos;
+    private int numerosActivos = 0;
+    private decimal proximoCargo = 0;
+    private decimal consumoPromedioDiario = 0;
+    private bool cargando = true;
+    private string? error;
+
+    // Variables para recarga
+    private bool mostrarModalRecarga = false;
+    private decimal montoRecarga = 100;
+    private string errorRecarga = "";
+
+    [Inject]
+    private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        cargando = true;
+        error = null;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userClaims = authState.User;
+            user = await UserManager.GetUserAsync(userClaims);
+            if (user != null)
+            {
+                // Obtener saldo actual
+                saldoActual = await SaldoService.ObtenerSaldoUsuario(user.Id);
+
+                // Obtener historial de movimientos
+                movimientos = await SaldoService.ObtenerMovimientosUsuario(user.Id, 20);
+
+                // Cargar números activos y calcular próximo cargo
+                await CargarInformacionNumeros(user.Id);
+
+                // Calcular promedio de consumo diario (últimos 30 días)
+                await CalcularConsumoPromedio(user.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar datos de saldo");
+            error = $"Ocurrió un error al cargar tu información de saldo: {ex.Message}";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task CargarInformacionNumeros(string userId)
+    {
+        try
+        {
+            // Consulta a la base de datos para obtener números activos y calcular cargo mensual
+            using var scope = ScopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            var numeros = await dbContext.NumerosTelefonicos
+                .Where(n => n.UserId == userId && n.Activo)
+                .ToListAsync();
+
+            numerosActivos = numeros.Count;
+
+            // Calcular próximo cargo mensual
+            proximoCargo = numeros.Sum(n =>
+            {
+                decimal costo = n.CostoMensual;
+                if (n.SMSHabilitado && n.CostoSMS.HasValue)
+                {
+                    costo += n.CostoSMS.Value;
+                }
+                return costo;
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar información de números");
+            // No mostramos error para no interrumpir toda la carga
+        }
+    }
+
+    private async Task CalcularConsumoPromedio(string userId)
+    {
+        try
+        {
+            // Obtener consumos de los últimos 30 días
+            using var scope = ScopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            var fechaInicio = DateTime.UtcNow.AddDays(-30);
+
+            var consumosRecientes = await dbContext.MovimientosSaldo
+                .Where(m => m.UserId == userId &&
+                       m.TipoMovimiento == "Consumo" &&
+                       m.Fecha >= fechaInicio)
+                .ToListAsync();
+
+            if (consumosRecientes.Any())
+            {
+                var totalConsumo = consumosRecientes.Sum(m => m.Monto);
+                var dias = Math.Max(1, (DateTime.UtcNow - fechaInicio).Days); // Evitar división por cero
+
+                consumoPromedioDiario = totalConsumo / dias;
+            }
+            else
+            {
+                consumoPromedioDiario = 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al calcular consumo promedio");
+            // No mostramos error para no interrumpir toda la carga
+        }
+    }
+
+    private void MostrarModalRecarga()
+    {
+        montoRecarga = 100;
+        errorRecarga = "";
+        mostrarModalRecarga = true;
+    }
+
+    private void OcultarModalRecarga()
+    {
+        mostrarModalRecarga = false;
+    }
+
+    private async Task ProcesarRecarga()
+    {
+        if (montoRecarga < 50)
+        {
+            errorRecarga = "El monto mínimo de recarga es $50 MXN";
+            return;
+        }
+
+        errorRecarga = "";
+
+        try
+        {
+            if (user == null)
+            {
+                errorRecarga = "Error: Sesión no válida";
+                return;
+            }
+
+            // Verificar si el usuario tiene customerId de Stripe
+            if (string.IsNullOrEmpty(user.StripeCustomerId))
+            {
+                user.StripeCustomerId = await StripeService.CrearClienteStripe(user);
+
+                // Actualizar usuario en la base de datos
+                await UserManager.UpdateAsync(user);
+            }
+
+            // Crear sesión de checkout para recarga
+            var session = await StripeService.CrearSesionRecarga(user.StripeCustomerId, montoRecarga);
+
+            if (session != null && !string.IsNullOrEmpty(session.Url))
+            {
+                // Usar la función redirectTo en lugar de window.location.href directamente
+                await JSRuntime.InvokeVoidAsync("redirectTo", session.Url);
+            }
+            else
+            {
+                errorRecarga = "No se pudo crear la sesión de pago. Intente de nuevo más tarde.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al procesar solicitud de recarga");
+            errorRecarga = $"Error: {ex.Message}";
+        }
+    }
+
+    [Inject]
+    private IServiceScopeFactory ScopeFactory { get; set; } = default!;
+}

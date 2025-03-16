@@ -170,6 +170,14 @@ namespace TelefonicaEmpresarial.Services
             int maxRetries = 3;
             int currentRetry = 0;
 
+            // Primero, obtener o crear una dirección de emergencia
+            string addressSid = await ObtenerDireccionEmergencia();
+
+            if (string.IsNullOrEmpty(addressSid))
+            {
+                throw new InvalidOperationException("No se pudo obtener una dirección de emergencia para el número.");
+            }
+
             while (currentRetry < maxRetries)
             {
                 try
@@ -177,7 +185,8 @@ namespace TelefonicaEmpresarial.Services
                     _logger.LogInformation($"Intentando comprar número {numero}. Intento {currentRetry + 1}/{maxRetries}");
 
                     var incomingNumber = await IncomingPhoneNumberResource.CreateAsync(
-                        phoneNumber: new PhoneNumber(numero)
+                        phoneNumber: new PhoneNumber(numero),
+                        addressSid: addressSid  // Añadir el AddressSid aquí
                     );
 
                     if (incomingNumber != null)
@@ -577,6 +586,39 @@ namespace TelefonicaEmpresarial.Services
             };
 
             return precios.ContainsKey(codigoPais) ? precios[codigoPais] : 12.0m;
+        }
+
+        private async Task<string> ObtenerDireccionEmergencia()
+        {
+            try
+            {
+                // Primero verificar si ya tenemos direcciones
+                var addresses = await AddressResource.ReadAsync();
+                if (addresses.Any())
+                {
+                    // Usar la primera dirección existente
+                    return addresses.First().Sid;
+                }
+
+                // Si no hay direcciones, crear una nueva
+                var address = await AddressResource.CreateAsync(
+                    friendlyName: "Dirección de emergencia predeterminada",
+                    customerName: "Telefónica Empresarial",
+                    street: "Calle Principal 123",
+                    city: "Ciudad de México",
+                    region: "CDMX",
+                    postalCode: "01000",
+                    isoCountry: "MX",
+                    emergencyEnabled: true
+                );
+
+                return address.Sid;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener dirección de emergencia");
+                return string.Empty;
+            }
         }
     }
 

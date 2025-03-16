@@ -18,6 +18,9 @@
             public DbSet<LogLlamada> LogsLlamadas { get; set; }
             public DbSet<LogSMS> LogsSMS { get; set; }
             public DbSet<ConfiguracionSistema> ConfiguracionesSistema { get; set; }
+            public DbSet<SaldoCuenta> SaldosCuenta { get; set; }
+            public DbSet<MovimientoSaldo> MovimientosSaldo { get; set; }
+
 
             protected override void OnModelCreating(ModelBuilder builder)
             {
@@ -46,6 +49,18 @@
                     .HasOne(s => s.NumeroTelefonico)
                     .WithMany(n => n.LogsSMS)
                     .HasForeignKey(s => s.NumeroTelefonicoId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                builder.Entity<SaldoCuenta>()
+                    .HasOne(s => s.Usuario)
+                    .WithMany()
+                    .HasForeignKey(s => s.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                builder.Entity<MovimientoSaldo>()
+                    .HasOne(m => m.Usuario)
+                    .WithMany()
+                    .HasForeignKey(m => m.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
 
                 // Seed inicial para configuraciones del sistema

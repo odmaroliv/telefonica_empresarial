@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.Identity
 @using System.Security.Claims
 @using TelefonicaEmpresaria.Models
+@using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services
 @using TelefonicaEmpresarial.Services
 @attribute [Authorize]
 @inject UserManager<ApplicationUser> UserManager
@@ -13,6 +14,7 @@
 @inject NavigationManager NavigationManager
 @inject ILogger<Comprar> Logger
 @inject ProtectedSessionStorage SessionStorage
+@inject ISaldoService SaldoService
 
 
 <div class="container mx-auto px-4 py-8">
@@ -172,7 +174,22 @@
                         <span>Total mensual:</span>
                         <span>$@(habilitarSMS ? (costoNumero + costoSMS).ToString("0.00") : costoNumero.ToString("0.00")) MXN</span>
                     </div>
+                    <div class="mt-2 p-2 bg-blue-50 rounded-lg">
+                        <div class="flex justify-between">
+                            <span>Tu saldo:</span>
+                            <span class="@(saldoUsuario >= (habilitarSMS ? (costoNumero + costoSMS) : costoNumero) ? "text-green-600" : "text-red-600") font-medium">
+                                $@saldoUsuario.ToString("0.00") MXN
+                            </span>
+                        </div>
+                        @if (saldoUsuario < (habilitarSMS ? (costoNumero + costoSMS) : costoNumero))
+                        {
+                            <div class="mt-1 text-xs text-red-600">
+                                Saldo insuficiente. <a href="/saldo" class="underline">Recargar saldo</a>
+                            </div>
+                        }
+                    </div>
                 </div>
+
 
                 <div class="mt-6 flex items-center">
                     <button @onclick="ComprarNumero" 
@@ -214,7 +231,7 @@
     private string? error;
     private decimal costoNumero;
     private decimal costoSMS;
-
+    private decimal saldoUsuario = 0;
 
     [Inject]
     private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
@@ -231,6 +248,10 @@
 
         // Cargar números para el país predeterminado
         await CargarNumeros();
+        if (user != null)
+        {
+            saldoUsuario = await SaldoService.ObtenerSaldoUsuario(user.Id);
+        }
     }
     private async Task CargarPaises()
     {
@@ -355,7 +376,22 @@
         try
         {
             Logger.LogInformation($"Iniciando compra de número {numeroSeleccionado.Number} para usuario {user.Id}");
-            
+
+            // Calcular costo total
+            decimal costoTotal = costoNumero;
+            if (habilitarSMS)
+            {
+                costoTotal += costoSMS;
+            }
+
+            // Verificar si el usuario tiene saldo suficiente
+            if (saldoUsuario < costoTotal)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Saldo insuficiente. Necesitas ${costoTotal}. Por favor, recarga tu saldo.");
+                NavigationManager.NavigateTo("/saldo");
+                return;
+            }
+
             var (numero, error) = await TelefonicaService.ComprarNumero(
                 user,
                 numeroSeleccionado.Number,
@@ -365,26 +401,9 @@
             if (numero != null)
             {
                 Logger.LogInformation($"Número registrado correctamente. ID: {numero.Id}");
-                // Guardar en session storage
-                await SessionStorage.SetAsync("NumeroId", numero.Id);
-                
-                // Obtener URL de pago
-                var urlPago = await TelefonicaService.ObtenerURLPago(numero.Id);
-                
-                if (!string.IsNullOrEmpty(urlPago))
-                {
-                    Logger.LogInformation($"Redirigiendo a URL de pago: {urlPago}");
-                    
-                    // Redirigir a la página de pago de Stripe
-                    await JSRuntime.InvokeVoidAsync("redirectTo", urlPago);
 
-                    return;
-                }
-                else
-                {
-                    Logger.LogWarning("No se pudo obtener URL de pago, redirigiendo a dashboard");
-                    NavigationManager.NavigateTo("/dashboard", forceLoad: true);
-                }
+                // Redirigir al dashboard
+                NavigationManager.NavigateTo("/dashboard", forceLoad: true);
             }
             else
             {
@@ -402,6 +421,7 @@
             cargandoCompra = false;
         }
     }
+
 
     private void Regresar()
     {

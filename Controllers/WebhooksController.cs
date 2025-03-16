@@ -59,12 +59,10 @@ namespace TelefonicaEmpresarial.Controllers
                 var validator = new RequestValidator(_twilioAuthToken);
                 var signature = Request.Headers["X-Twilio-Signature"].ToString();
 
-                // En desarrollo, puedes comentar esta validación para pruebas
                 if (!validator.Validate(requestUrl, parameters, signature))
                 {
                     _logger.LogWarning("Firma Twilio inválida");
-                    // En producción, descomenta la siguiente línea
-                    // return Unauthorized("Firma Twilio inválida");
+                    return Unauthorized("Firma Twilio inválida");
                 }
 
                 // Buscar el número en nuestra base de datos (To en Twilio es nuestro número)
@@ -87,7 +85,32 @@ namespace TelefonicaEmpresarial.Controllers
                     _context.LogsLlamadas.Add(log);
                     await _context.SaveChangesAsync();
 
-                    _logger.LogInformation($"Llamada registrada: De={evento.From}, A={evento.To}, Estado={evento.CallStatus}");
+                    _logger.LogInformation($"Llamada registrada: De={evento.From}, A={evento.To}, Estado={evento.CallStatus}, Duración={evento.CallDuration}s");
+
+                    // Procesar el consumo de la llamada solo si está completada y tiene duración
+                    if ((evento.CallStatus == "completed" || evento.CallStatus.Contains("complete")) && evento.CallDuration > 0)
+                    {
+                        try
+                        {
+                            // Opcional: Inyectar el servicio de telefonía
+                            var telefonicaService = HttpContext.RequestServices.GetRequiredService<ITelefonicaService>();
+                            var resultado = await telefonicaService.ProcesarConsumoLlamada(numeroTelefonico, log);
+
+                            if (resultado)
+                            {
+                                _logger.LogInformation($"Consumo procesado correctamente para llamada {evento.CallSid}");
+                            }
+                            else
+                            {
+                                _logger.LogWarning($"No se pudo procesar el consumo para llamada {evento.CallSid}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, $"Error al procesar consumo para llamada {evento.CallSid}");
+                            // Continuamos a pesar del error para no interrumpir el flujo normal
+                        }
+                    }
                 }
                 else
                 {

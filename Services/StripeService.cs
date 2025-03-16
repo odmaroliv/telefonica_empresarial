@@ -5,6 +5,7 @@ using Stripe;
 using Stripe.Checkout;
 using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data;
 using TelefonicaEmpresaria.Models;
+using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services;
 
 namespace TelefonicaEmpresarial.Services
 {
@@ -20,6 +21,11 @@ namespace TelefonicaEmpresarial.Services
         Task<bool> QuitarSMSDeSuscripcion(string subscriptionId);
         Task ProcesarEventoWebhook(string json, string signatureHeader);
         Task<string?> ObtenerURLPago(string sessionId);
+
+        //saldo
+        Task<StripeCheckoutSession> CrearSesionRecarga(string customerId, decimal monto);
+        Task<Stripe.Checkout.Session> ObtenerDetallesSesion(string sessionId);
+
     }
 
     public class StripeService : IStripeService
@@ -30,11 +36,13 @@ namespace TelefonicaEmpresarial.Services
         private readonly string _apiKey;
         private readonly string _webhookSecret;
         private readonly AsyncRetryPolicy _retryPolicy;
+        private readonly IServiceProvider _serviceProvider;
 
         public StripeService(
             IConfiguration configuration,
             ApplicationDbContext context,
-            ILogger<StripeService> logger)
+            ILogger<StripeService> logger,
+            IServiceProvider serviceProvider)
         {
             _configuration = configuration;
             _context = context;
@@ -59,6 +67,7 @@ namespace TelefonicaEmpresarial.Services
                         _logger.LogWarning($"Error en Stripe (intento {retryCount}): {exception.Message}. Reintentando en {timeSpan.TotalSeconds} segundos.");
                     }
                 );
+            _serviceProvider = serviceProvider;
         }
 
         public async Task<string> CrearClienteStripe(ApplicationUser usuario)
@@ -521,6 +530,7 @@ namespace TelefonicaEmpresarial.Services
                 // Manejar eventos relevantes
                 switch (stripeEvent.Type)
                 {
+
                     case "invoice.paid":
                         var invoice = stripeEvent.Data.Object as Invoice;
                         await ManejarPagoExitoso(invoice);
@@ -538,7 +548,19 @@ namespace TelefonicaEmpresarial.Services
 
                     case "checkout.session.completed":
                         var sesionCompletada = stripeEvent.Data.Object as Session;
-                        await ManejarSesionCompletada(sesionCompletada);
+
+                        // Verificar si es una sesión de recarga
+                        if (sesionCompletada?.Metadata?.TryGetValue("TipoTransaccion", out var tipoTransaccion) == true
+                            && tipoTransaccion == "RecargaSaldo")
+                        {
+                            // Procesar como recarga de saldo
+                            await ProcesarRecargaSaldo(sesionCompletada.Id);
+                        }
+                        else
+                        {
+                            // Procesar como una compra normal
+                            await ManejarSesionCompletada(sesionCompletada);
+                        }
                         break;
                 }
             }
@@ -551,6 +573,69 @@ namespace TelefonicaEmpresarial.Services
             {
                 _logger.LogError($"Error general al procesar webhook: {ex.Message}");
                 throw;
+            }
+        }
+
+        // Añadir al método ProcesarEventoWebhook en StripeService.cs o crear un método específico:
+
+        private async Task ProcesarRecargaSaldo(string sessionId)
+        {
+            try
+            {
+                // PRIMERO: Verificar si esta sesión ya fue procesada
+                var saldoService = _serviceProvider.GetRequiredService<ISaldoService>();
+                bool transaccionExistente = await saldoService.ExisteTransaccion(sessionId);
+
+                if (transaccionExistente)
+                {
+                    _logger.LogInformation($"Webhook: La sesión {sessionId} ya fue procesada anteriormente");
+                    return; // Salir sin procesar nuevamente
+                }
+
+                // Obtener detalles de la sesión
+                var sessionService = new SessionService();
+                var session = await sessionService.GetAsync(sessionId);
+
+                if (session == null || session.PaymentStatus != "paid")
+                {
+                    _logger.LogWarning($"Sesión {sessionId} no está pagada o no existe");
+                    return;
+                }
+
+                // Extraer el ID del usuario del cliente de Stripe
+                var customerId = session.CustomerId;
+                var usuario = await _context.Users.FirstOrDefaultAsync(u => u.StripeCustomerId == customerId);
+
+                if (usuario == null)
+                {
+                    _logger.LogWarning($"No se encontró usuario para el cliente de Stripe {customerId}");
+                    return;
+                }
+
+                // Calcular monto (Stripe usa centavos)
+                decimal monto = (decimal)session.AmountTotal / 100;
+
+                // Registrar la recarga
+
+                var resultado = await saldoService.AgregarSaldo(
+                    usuario.Id,
+                    monto,
+                    "Recarga de saldo (webhook)",
+                    sessionId
+                );
+
+                if (resultado)
+                {
+                    _logger.LogInformation($"Recarga de ${monto} procesada correctamente para usuario {usuario.Id} mediante webhook");
+                }
+                else
+                {
+                    _logger.LogError($"Error al procesar recarga mediante webhook para sesión {sessionId}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al procesar recarga de saldo para sesión {sessionId}");
             }
         }
 
@@ -733,6 +818,98 @@ namespace TelefonicaEmpresarial.Services
                 _logger.LogError($"Error al manejar cancelación de suscripción: {ex.Message}");
                 throw;
             }
+        }
+        public async Task<StripeCheckoutSession> CrearSesionRecarga(string customerId, decimal monto)
+        {
+            return await _retryPolicy.ExecuteAsync(async () =>
+            {
+                try
+                {
+                    _logger.LogInformation($"Creando sesión de recarga para cliente {customerId}, monto: {monto}");
+
+                    var lineItems = new List<SessionLineItemOptions>
+            {
+                new SessionLineItemOptions
+                {
+                    PriceData = new SessionLineItemPriceDataOptions
+                    {
+                        UnitAmount = (long)(monto * 100), // Convertir a centavos
+                        Currency = "mxn",
+                        ProductData = new SessionLineItemPriceDataProductDataOptions
+                        {
+                            Name = $"Recarga de saldo: ${monto} MXN",
+                            Description = "Recarga de saldo para servicios de telefonía"
+                        }
+                    },
+                    Quantity = 1
+                }
+            };
+
+                    var appUrl = _configuration["AppUrl"] ?? "https://localhost:7019";
+
+                    var options = new SessionCreateOptions
+                    {
+                        Customer = customerId,
+                        PaymentMethodTypes = new List<string> { "card" },
+                        LineItems = lineItems,
+                        Mode = "payment",
+                        SuccessUrl = $"{appUrl}/saldo/recarga/exito?session_id={{CHECKOUT_SESSION_ID}}",
+                        CancelUrl = $"{appUrl}/saldo/recarga/cancelada",
+                        Metadata = new Dictionary<string, string>
+                {
+                    { "TipoTransaccion", "RecargaSaldo" },
+                    { "Monto", monto.ToString() }
+                }
+                    };
+
+                    var service = new SessionService();
+                    var session = await service.CreateAsync(options);
+
+                    _logger.LogInformation($"Sesión de recarga creada. ID: {session.Id}");
+
+                    return new StripeCheckoutSession
+                    {
+                        SessionId = session.Id,
+                        Url = session.Url
+                    };
+                }
+                catch (StripeException ex)
+                {
+                    _logger.LogError($"Error de Stripe al crear sesión de recarga: {ex.Message}, Tipo: {ex.StripeError?.Type}");
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Error general al crear sesión de recarga: {ex.Message}");
+                    throw;
+                }
+            });
+        }
+
+        public async Task<Stripe.Checkout.Session> ObtenerDetallesSesion(string sessionId)
+        {
+            return await _retryPolicy.ExecuteAsync(async () =>
+            {
+                try
+                {
+                    _logger.LogInformation($"Obteniendo detalles de sesión: {sessionId}");
+
+                    var sessionService = new SessionService();
+                    var session = await sessionService.GetAsync(sessionId);
+
+                    return session;
+                }
+                catch (StripeException ex)
+                {
+                    _logger.LogError($"Error de Stripe al obtener detalles de sesión: {ex.Message}");
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Error general al obtener detalles de sesión: {ex.Message}");
+                    throw;
+                }
+            });
         }
     }
 

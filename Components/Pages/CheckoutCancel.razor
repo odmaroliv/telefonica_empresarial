@@ -69,7 +69,7 @@
                 if (!string.IsNullOrEmpty(urlPago))
                 {
                     Logger.LogInformation($"Redirigiendo a URL de pago: {urlPago}");
-                    await JSRuntime.InvokeVoidAsync("window.location.href", urlPago);
+                    await JSRuntime.InvokeVoidAsync("redirectTo", urlPago);
                     return;
                 }
             }

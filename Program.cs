@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data;
 using TelefonicaEmpresaria.Models;
+using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services;
 using TelefonicaEmpresarial.Areas.Identity;
 using TelefonicaEmpresarial.Services;
 
@@ -37,6 +38,7 @@ builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuth
 builder.Services.AddScoped<ITwilioService, TwilioService>();
 builder.Services.AddScoped<ITelefonicaService, TelefonicaService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
+builder.Services.AddScoped<ISaldoService, SaldoService>();
 
 // Configuración de CORS si es necesario
 builder.Services.AddCors(options =>
