@@ -250,32 +250,29 @@ namespace TelefonicaEmpresarial.Services
                 {
                     _logger.LogInformation($"Configurando redirección para {twilioSid} hacia {numeroDestino}");
 
-                    // Configuración real para redirigir llamadas
-                    var twimlUrl = $"https://webhooks.twilio.com/v1/Accounts/{_accountSid}/Calls/forward/{Uri.EscapeDataString(numeroDestino)}";
+                    // Construir la URL para la redirección de llamadas
+                    // Esta URL apunta al controlador que acabamos de crear
+                    var appDomain = _configuration["AppUrl"] ?? "https://tudominio.com";
+                    // Asegúrate que numeroDestino está URL encoded para pasarlo como parámetro
+                    var encodedNumeroDestino = Uri.EscapeDataString(numeroDestino);
+                    var voiceUrl = $"{appDomain}/api/twilio/redirect?RedirectTo={encodedNumeroDestino}";
 
-                    // Si hay un ApplicationSid, usarlo, de lo contrario usar URLs directas
-                    var updateOptions = !string.IsNullOrEmpty(_applicationSid) ?
-                        new UpdateIncomingPhoneNumberOptions(twilioSid)
-                        {
-                            VoiceApplicationSid = _applicationSid,
-                            SmsUrl = new Uri($"https://webhooks.twilio.com/v1/Accounts/{_accountSid}/SMS/forward"),
-                            StatusCallback = new Uri($"https://{_configuration["AppUrl"]}/api/webhooks/twilio/llamada")
-                        } :
-                        new UpdateIncomingPhoneNumberOptions(twilioSid)
-                        {
-                            VoiceUrl = new Uri(twimlUrl),
-                            VoiceMethod = Twilio.Http.HttpMethod.Post,
-                            SmsUrl = new Uri($"https://{_configuration["AppUrl"]}/api/webhooks/twilio/sms"),
-                            SmsMethod = Twilio.Http.HttpMethod.Post,
-                            StatusCallback = new Uri($"https://{_configuration["AppUrl"]}/api/webhooks/twilio/llamada"),
-                            StatusCallbackMethod = Twilio.Http.HttpMethod.Post
-                        };
+                    // Actualizar el número en Twilio
+                    var updateOptions = new UpdateIncomingPhoneNumberOptions(twilioSid)
+                    {
+                        VoiceUrl = new Uri(voiceUrl),
+                        VoiceMethod = Twilio.Http.HttpMethod.Post,
+                        SmsUrl = new Uri($"{appDomain}/api/webhooks/twilio/sms"),
+                        SmsMethod = Twilio.Http.HttpMethod.Post,
+                        StatusCallback = new Uri($"{appDomain}/api/webhooks/twilio/llamada"),
+                        StatusCallbackMethod = Twilio.Http.HttpMethod.Post
+                    };
 
                     var updatedNumber = await IncomingPhoneNumberResource.UpdateAsync(updateOptions);
 
                     if (updatedNumber != null)
                     {
-                        _logger.LogInformation($"Redirección configurada correctamente para {twilioSid}");
+                        _logger.LogInformation($"Redirección configurada correctamente para {twilioSid} a {numeroDestino}");
                         return true;
                     }
                     else
