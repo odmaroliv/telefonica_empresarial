@@ -10,7 +10,7 @@
                     <div class="flex justify-between items-center py-4">
                         <div class="flex items-center">
                             <a href="/" class="text-xl font-bold text-blue-600">
-                                Telefónica Empresarial
+                                Número Empresarial
                             </a>
                         </div>
                         <div class="flex items-center space-x-4">
@@ -28,9 +28,10 @@
                                 {
                                     <div class="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 py-1">
                                         <a href="/Identity/Account/Manage" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Mi Perfil</a>
-                                        <form method="post" action="/Identity/Account/LogOut">
-                                            <button type="submit" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Cerrar Sesión</button>
-                                        </form>
+                                        <a href="/Account/Logout" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                            Cerrar Sesión
+                                        </a>
+
                                     </div>
                                 }
                             </div>
@@ -63,6 +64,7 @@
                                     </svg>
                                     Mi Saldo
                                 </NavLink>
+                              
                                 <AuthorizeView Roles="Admin" Context="adminContext">
                                     <NavLink href="/admin" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
@@ -84,7 +86,7 @@
                 <div class="container mx-auto px-4 py-6">
                     <div class="flex flex-col md:flex-row justify-between items-center">
                         <div class="mb-4 md:mb-0">
-                            <p class="text-sm text-gray-500">&copy; @DateTime.Now.Year - Telefónica Empresarial</p>
+                            <p class="text-sm text-gray-500">&copy; @DateTime.Now.Year - Número Empresarial</p>
                         </div>
                         <div class="flex space-x-6">
                             <a href="/terminos" class="text-sm text-gray-500 hover:text-gray-700">Términos y Condiciones</a>

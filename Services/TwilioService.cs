@@ -17,6 +17,7 @@ namespace TelefonicaEmpresarial.Services
         Task<decimal> ObtenerCostoNumero(string numero);
         Task<decimal> ObtenerCostoSMS();
         Task<List<PaisDisponible>> ObtenerPaisesDisponibles();
+
     }
 
     public class TwilioService : ITwilioService
@@ -27,6 +28,7 @@ namespace TelefonicaEmpresarial.Services
         private readonly string _applicationSid;
         private readonly ILogger<TwilioService> _logger;
         private readonly List<PaisDisponible> _paisesDisponibles;
+        private readonly Dictionary<string, string> _bundlesPorPais;
 
         public TwilioService(IConfiguration configuration, ILogger<TwilioService> logger)
         {
@@ -38,6 +40,28 @@ namespace TelefonicaEmpresarial.Services
 
             // Inicializar Twilio con credenciales
             TwilioClient.Init(_accountSid, _authToken);
+
+            // Cargar configuración de bundles por país
+            _bundlesPorPais = new Dictionary<string, string>();
+            var bundlesSection = _configuration.GetSection("Twilio:Bundles");
+            if (bundlesSection.Exists())
+            {
+                foreach (var bundleConfig in bundlesSection.GetChildren())
+                {
+                    var codigoPais = bundleConfig.Key;
+                    var bundleId = bundleConfig.Value;
+                    if (!string.IsNullOrEmpty(bundleId))
+                    {
+                        _bundlesPorPais[codigoPais] = bundleId;
+                        _logger.LogInformation($"Bundle configurado para {codigoPais}: {bundleId}");
+                    }
+                }
+            }
+            else
+            {
+                _logger.LogWarning("No se encontró configuración de bundles en appsettings.json");
+            }
+
 
             // Lista de países disponibles con formato correcto
             _paisesDisponibles = new List<PaisDisponible>
@@ -170,24 +194,51 @@ namespace TelefonicaEmpresarial.Services
             int maxRetries = 3;
             int currentRetry = 0;
 
-            // Primero, obtener o crear una dirección de emergencia
-            string addressSid = await ObtenerDireccionEmergencia();
+            // Determinar el país basado en el número
+            string codigoPais = ExtractCountryCode(numero);
 
-            if (string.IsNullOrEmpty(addressSid))
+            // Obtener el bundle ID para el país correspondiente
+            string? bundleId = null;
+            if (_bundlesPorPais.TryGetValue(codigoPais, out var configuredBundleId))
             {
-                throw new InvalidOperationException("No se pudo obtener una dirección de emergencia para el número.");
+                bundleId = configuredBundleId;
+                _logger.LogInformation($"Usando bundle {bundleId} para país {codigoPais}");
+            }
+            else
+            {
+                _logger.LogWarning($"No hay bundle configurado para {codigoPais}. Comprando número sin bundle regulatorio.");
             }
 
             while (currentRetry < maxRetries)
             {
                 try
                 {
-                    _logger.LogInformation($"Intentando comprar número {numero}. Intento {currentRetry + 1}/{maxRetries}");
+                    _logger.LogInformation($"Intentando comprar número {numero}" +
+                        (bundleId != null ? $" con bundle {bundleId}" : " sin bundle") +
+                        $". Intento {currentRetry + 1}/{maxRetries}");
 
-                    var incomingNumber = await IncomingPhoneNumberResource.CreateAsync(
-                        phoneNumber: new PhoneNumber(numero),
-                        addressSid: addressSid  // Añadir el AddressSid aquí
-                    );
+                    // Crear el objeto para las opciones de compra
+                    var options = new CreateIncomingPhoneNumberOptions();
+
+                    // Configurar el número
+                    options.PhoneNumber = new PhoneNumber(numero);
+
+                    string addressSid = await ObtenerDireccionEmergencia();
+
+                    if (string.IsNullOrEmpty(addressSid))
+                    {
+                        throw new InvalidOperationException("No se pudo obtener una dirección de emergencia para el número.");
+                    }
+                    options.AddressSid = addressSid;
+
+                    // Añadir bundle si está configurado
+                    if (!string.IsNullOrEmpty(bundleId))
+                    {
+                        options.BundleSid = bundleId;
+                    }
+
+                    // Comprar el número
+                    var incomingNumber = await IncomingPhoneNumberResource.CreateAsync(options);
 
                     if (incomingNumber != null)
                     {
@@ -197,7 +248,9 @@ namespace TelefonicaEmpresarial.Services
                         {
                             Numero = incomingNumber.PhoneNumber.ToString(),
                             Sid = incomingNumber.Sid,
-                            Status = "Activo"
+                            Status = "Activo",
+                            BundleId = bundleId // Incluir el bundleId utilizado
+
                         };
                     }
                     else
@@ -338,7 +391,7 @@ namespace TelefonicaEmpresarial.Services
 
                     var updatedNumber = await IncomingPhoneNumberResource.UpdateAsync(
                         pathSid: twilioSid,
-                        smsUrl: new Uri($"https://{_configuration["AppUrl"]}/api/webhooks/twilio/sms"),
+                        smsUrl: new Uri($"{_configuration["AppUrl"]}/api/webhooks/twilio/sms"),
                         smsMethod: Twilio.Http.HttpMethod.Post
                     );
 
@@ -599,18 +652,18 @@ namespace TelefonicaEmpresarial.Services
                     // Usar la primera dirección existente
                     return addresses.First().Sid;
                 }
-
+                var addressConfig = _configuration.GetSection("Twilio:Address");
                 // Si no hay direcciones, crear una nueva
                 var address = await AddressResource.CreateAsync(
-                    friendlyName: "Dirección de emergencia predeterminada",
-                    customerName: "Telefónica Empresarial",
-                    street: "Calle Principal 123",
-                    city: "Ciudad de México",
-                    region: "CDMX",
-                    postalCode: "01000",
-                    isoCountry: "MX",
-                    emergencyEnabled: true
-                );
+            friendlyName: addressConfig["FriendlyName"] ?? "Dirección Configurada",
+            customerName: addressConfig["CustomerName"] ?? "Número Empresarial",
+            street: addressConfig["Street"] ?? "Dirección no especificada",
+            city: addressConfig["City"] ?? "Ciudad no especificada",
+            region: addressConfig["Region"] ?? "Región no especificada",
+            postalCode: addressConfig["PostalCode"] ?? "00000",
+            isoCountry: addressConfig["IsoCountry"] ?? "MX",
+            emergencyEnabled: bool.Parse(addressConfig["EmergencyEnabled"] ?? "true")
+        );
 
                 return address.Sid;
             }
@@ -638,6 +691,7 @@ namespace TelefonicaEmpresarial.Services
         public string? Numero { get; set; }
         public string? Sid { get; set; }
         public string? Status { get; set; }
+        public string? BundleId { get; set; }
     }
 
     public class PaisDisponible

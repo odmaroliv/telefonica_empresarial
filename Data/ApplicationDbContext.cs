@@ -20,6 +20,10 @@
             public DbSet<ConfiguracionSistema> ConfiguracionesSistema { get; set; }
             public DbSet<SaldoCuenta> SaldosCuenta { get; set; }
             public DbSet<MovimientoSaldo> MovimientosSaldo { get; set; }
+            public DbSet<EventoWebhook> EventosWebhook { get; set; }
+            public DbSet<RequisitosRegulatorios> RequisitosRegulatorios { get; set; }
+            public DbSet<DocumentacionUsuario> DocumentacionUsuarios { get; set; }
+
 
 
             protected override void OnModelCreating(ModelBuilder builder)
@@ -63,30 +67,60 @@
                     .HasForeignKey(m => m.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
 
-                // Seed inicial para configuraciones del sistema
+                builder.Entity<DocumentacionUsuario>()
+               .HasIndex(d => new { d.UserId, d.CodigoPais })
+               .IsUnique();
+
+                builder.Entity<RequisitosRegulatorios>()
+                    .HasIndex(r => r.CodigoPais)
+                    .IsUnique();
+
                 builder.Entity<ConfiguracionSistema>().HasData(
-                    new ConfiguracionSistema
-                    {
-                        Id = 1,
-                        Clave = "MargenGanancia",
-                        Valor = "0.8",
-                        Descripcion = "Margen de ganancia aplicado sobre el costo del proveedor (0.8 = 80%)"
-                    },
-                    new ConfiguracionSistema
-                    {
-                        Id = 2,
-                        Clave = "MargenGananciaSMS",
-                        Valor = "0.85",
-                        Descripcion = "Margen de ganancia para el servicio de SMS (0.85 = 85%)"
-                    },
-                    new ConfiguracionSistema
-                    {
-                        Id = 3,
-                        Clave = "IVA",
-                        Valor = "0.16",
-                        Descripcion = "Impuesto al Valor Agregado"
-                    }
-                );
+      new ConfiguracionSistema
+      {
+          Id = 1,
+          Clave = "MargenGanancia",
+          Valor = "3.0", // Aumentado a 300% 
+          Descripcion = "Margen de ganancia aplicado sobre el costo del proveedor (3.0 = 300%)"
+      },
+      new ConfiguracionSistema
+      {
+          Id = 2,
+          Clave = "MargenGananciaSMS",
+          Valor = "3.5", // Aumentado a 350%
+          Descripcion = "Margen de ganancia para el servicio de SMS (3.5 = 350%)"
+      },
+      new ConfiguracionSistema
+      {
+          Id = 3,
+          Clave = "IVA",
+          Valor = "0.16",
+          Descripcion = "Impuesto al Valor Agregado"
+      },
+      new ConfiguracionSistema
+      {
+          Id = 4,
+          Clave = "MargenGananciaLlamadas",
+          Valor = "4.0", // Aumentado a 400%
+          Descripcion = "Margen de ganancia por minuto de llamadas (4.0 = 400%)"
+      },
+      new ConfiguracionSistema
+      {
+          Id = 5,
+          Clave = "CostoMinimoNumero",
+          Valor = "100.0", // Precio mínimo garantizado para números
+          Descripcion = "Costo mínimo mensual para números telefónicos (MXN)"
+      },
+      new ConfiguracionSistema
+      {
+          Id = 6,
+          Clave = "CostoMinimoSMS",
+          Valor = "25.0", // Precio mínimo garantizado para servicio SMS
+          Descripcion = "Costo mínimo mensual para servicio SMS (MXN)"
+      }
+  );
+
+
             }
         }
     }

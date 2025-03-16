@@ -1,0 +1,119 @@
+﻿@page "/numeros/requisitos"
+@using Microsoft.AspNetCore.Authorization
+@using TelefonicaEmpresaria.Models
+@using TelefonicaEmpresarial.Services
+@attribute [Authorize]
+@inject IRequisitosRegulatoriosService RequisitosService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-8 text-gray-800">Requisitos Regulatorios</h1>
+
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <h2 class="text-xl font-semibold mb-4">Selecciona un país</h2>
+        <p class="text-gray-700 mb-6">
+            Las autoridades reguladoras de telecomunicaciones exigen documentación específica para poder adquirir
+            números telefónicos en diferentes países. Selecciona un país para ver sus requisitos.
+        </p>
+
+        @if (cargando)
+        {
+            <div class="flex justify-center py-8">
+                <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+        }
+        else if (error != null)
+        {
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">
+                <strong class="font-bold">Error:</strong>
+                <span class="block sm:inline">@error</span>
+            </div>
+        }
+        else
+        {
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                @foreach (var pais in paises)
+                {
+                    <div @onclick="() => SeleccionarPais(pais.CodigoPais)"
+                         class="border rounded-lg p-6 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors">
+                        <h3 class="text-lg font-medium mb-2">@pais.Nombre</h3>
+
+                        <div class="flex flex-col space-y-2">
+                            @if (pais.RequiereIdentificacion)
+                            {
+                                <div class="flex items-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                    </svg>
+                                    <span class="text-sm">Identificación oficial</span>
+                                </div>
+                            }
+
+                            @if (pais.RequiereComprobanteDomicilio)
+                            {
+                                <div class="flex items-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                    </svg>
+                                    <span class="text-sm">Comprobante de domicilio</span>
+                                </div>
+                            }
+
+                            @if (pais.RequiereDocumentoFiscal)
+                            {
+                                <div class="flex items-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                    </svg>
+                                    <span class="text-sm">Documento fiscal</span>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="mt-4 text-right">
+                            <button class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                                Ver requisitos →
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool cargando = true;
+    private string? error;
+    private List<Models.RequisitosRegulatorios> paises = new List<Models.RequisitosRegulatorios>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarPaises();
+    }
+
+    private async Task CargarPaises()
+    {
+        cargando = true;
+        error = null;
+
+        try
+        {
+            paises = await RequisitosService.ObtenerTodosRequisitos();
+        }
+        catch (Exception ex)
+        {
+            error = $"Error al cargar requisitos regulatorios: {ex.Message}";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private void SeleccionarPais(string codigoPais)
+    {
+        NavigationManager.NavigateTo($"/numeros/requisitos/{codigoPais}");
+    }
+}

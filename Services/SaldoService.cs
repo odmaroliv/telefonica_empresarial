@@ -1,11 +1,13 @@
 ﻿namespace TelefonicaEmpresaria.Services
 {
     using Microsoft.EntityFrameworkCore;
+    using Microsoft.Extensions.DependencyInjection;
     using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data;
     using TelefonicaEmpresaria.Models;
 
     namespace TelefonicaEmpresarial.Services
     {
+
         public interface ISaldoService
         {
             Task<decimal> ObtenerSaldoUsuario(string userId);
@@ -21,11 +23,13 @@
         {
             private readonly ApplicationDbContext _context;
             private readonly ILogger<SaldoService> _logger;
+            private readonly IServiceScopeFactory _serviceScopeFactory;
 
-            public SaldoService(ApplicationDbContext context, ILogger<SaldoService> logger)
+            public SaldoService(ApplicationDbContext context, ILogger<SaldoService> logger, IServiceScopeFactory serviceScopeFactory)
             {
                 _context = context;
                 _logger = logger;
+                _serviceScopeFactory = serviceScopeFactory;
             }
 
             public async Task<decimal> ObtenerSaldoUsuario(string userId)
@@ -196,29 +200,63 @@
 
             public async Task<decimal> CalcularCostoLlamada(int duracionSegundos, string pais = "MX")
             {
-                // Tarifas por minuto según el país de destino
-                var tarifasPorMinuto = new Dictionary<string, decimal>
-            {
-                { "MX", 0.20m }, // 0.20 MXN por minuto en México
-                { "US", 0.30m }, // 0.30 MXN por minuto en EE.UU.
-                { "CA", 0.30m }, // 0.30 MXN por minuto en Canadá
-                { "ES", 0.50m }, // 0.50 MXN por minuto en España
-                { "default", 0.40m } // Tarifa por defecto para otros países
-            };
+                try
+                {
+                    // Tarifas por minuto según el país de destino - esto es temporal y deberías 
+                    // reemplazarlo con tarifas reales de Twilio
+                    var tarifasPorMinuto = new Dictionary<string, decimal>
+        {
+            { "MX", 0.20m }, // 0.20 USD por minuto en México
+            { "US", 0.30m }, // 0.30 USD por minuto en EE.UU.
+            { "CA", 0.30m }, // 0.30 USD por minuto en Canadá
+            { "ES", 0.50m }, // 0.50 USD por minuto en España
+            { "default", 0.40m } // Tarifa por defecto para otros países
+        };
 
-                // Obtener la tarifa correspondiente al país
-                var tarifaMinuto = tarifasPorMinuto.ContainsKey(pais)
-                    ? tarifasPorMinuto[pais]
-                    : tarifasPorMinuto["default"];
+                    // Obtener la tarifa correspondiente al país
+                    var tarifaMinuto = tarifasPorMinuto.ContainsKey(pais)
+                        ? tarifasPorMinuto[pais]
+                        : tarifasPorMinuto["default"];
 
-                // Convertir segundos a minutos y calcular el costo
-                decimal minutos = (decimal)duracionSegundos / 60;
+                    // Convertir USD a MXN (aproximado)
+                    tarifaMinuto = tarifaMinuto * 20.0m; // 20 pesos por dólar
 
-                // Redondear hacia arriba al minuto más cercano
-                minutos = Math.Ceiling(minutos);
+                    // Obtener configuración de margen e IVA
+                    using var scope = _serviceScopeFactory.CreateScope();
+                    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-                return minutos * tarifaMinuto;
+                    var configuraciones = await dbContext.ConfiguracionesSistema
+                        .Where(c => c.Clave == "MargenGananciaLlamadas" || c.Clave == "IVA")
+                        .ToDictionaryAsync(c => c.Clave, c => decimal.Parse(c.Valor));
+
+                    var margenLlamadas = configuraciones.ContainsKey("MargenGananciaLlamadas")
+                        ? configuraciones["MargenGananciaLlamadas"]
+                        : 4.0m; // 400% de margen por defecto
+
+                    var iva = configuraciones.ContainsKey("IVA")
+                        ? configuraciones["IVA"]
+                        : 0.16m; // 16% IVA por defecto
+
+                    // Convertir segundos a minutos y redondear hacia arriba
+                    decimal minutos = Math.Ceiling((decimal)duracionSegundos / 60);
+
+                    // Calcular costo con margen e IVA
+                    decimal costoFinal = tarifaMinuto * minutos * (1 + margenLlamadas) * (1 + iva);
+
+                    // Asegurar un mínimo rentable
+                    costoFinal = Math.Max(costoFinal, 5.0m); // Mínimo 5 pesos por llamada
+
+                    // Redondear a 2 decimales
+                    return Math.Ceiling(costoFinal);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error al calcular costo de llamada");
+                    // Usar un valor seguro que no sea demasiado bajo en caso de error
+                    return Math.Ceiling((decimal)duracionSegundos / 60) * 10.0m; // Mínimo 10 pesos por minuto
+                }
             }
+
             // Añadir un método para verificar si una transacción ya existe
             public async Task<bool> ExisteTransaccion(string referenciaExterna)
             {

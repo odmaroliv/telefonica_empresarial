@@ -16,9 +16,9 @@
         {
             <div class="py-16 px-8 text-center">
                 <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mx-auto mb-6"></div>
-                <h2 class="text-2xl font-bold text-gray-800 mb-2">Procesando tu compra</h2>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Verificando tu compra</h2>
                 <p class="text-gray-600">
-                    Estamos configurando tu número telefónico.<br />
+                    Estamos confirmando tu pago.<br />
                     Por favor espera un momento...
                 </p>
             </div>
@@ -52,7 +52,8 @@
                 </div>
                 <h2 class="text-2xl font-bold text-gray-800 mb-2">¡Compra exitosa!</h2>
                 <p class="text-gray-600 mb-6">
-                    Tu número telefónico ha sido configurado correctamente.
+                    Tu número telefónico está siendo configurado.<br />
+                    Pronto estará disponible en tu dashboard.
                 </p>
                 <div class="bg-gray-50 rounded-lg p-6 mb-8">
                     <div class="flex justify-between mb-2">
@@ -61,7 +62,7 @@
                     </div>
                     <div class="flex justify-between mb-2">
                         <span class="font-medium">Estado:</span>
-                        <span class="text-green-600 font-medium">Activo</span>
+                        <span class="text-green-600 font-medium">En procesamiento</span>
                     </div>
                     <div class="flex justify-between">
                         <span class="font-medium">SMS:</span>
@@ -105,8 +106,8 @@
                     Logger.LogInformation($"NumeroId recuperado de sesión: {numeroId}");
                 }
 
-                // Procesar la compra
-                await ProcesarCompra();
+                // Verificar el pago - IMPORTANTE: no procesar el pago aquí, solo verificar
+                await VerificarCompra();
             }
             else
             {
@@ -125,7 +126,7 @@
         }
     }
 
-    private async Task ProcesarCompra()
+    private async Task VerificarCompra()
     {
         try
         {
@@ -135,7 +136,7 @@
                 return;
             }
 
-            // Verificar que el pago se completó correctamente
+            // SOLO verificar que el pago se completó, NO PROCESAR
             bool pagoCompletado = await StripeService.VerificarPagoCompletado(sessionId);
 
             if (!pagoCompletado)
@@ -156,8 +157,6 @@
                     numeroAdquirido = numeroDetalle.Numero;
                     smsHabilitado = numeroDetalle.SMSHabilitado;
 
-                    // El procesamiento real ocurrirá mediante el webhook de Stripe
-                    // Aquí solo mostramos la información al usuario
 
                     Logger.LogInformation($"Detalles del número recuperados: {numeroAdquirido}");
                 }
@@ -169,20 +168,16 @@
             }
             else
             {
-                // En un entorno real, buscaríamos el número por la transacción
-                // Pero por simplicidad, solo mostraremos un error
-                error = "No se pudo recuperar la información del número adquirido.";
+               
+                numeroAdquirido = "Tu número está siendo configurado";
+                smsHabilitado = false;
                 Logger.LogWarning("No se tiene numeroId en sesión");
             }
         }
         catch (Exception ex)
         {
-            error = $"Ocurrió un error al procesar tu compra: {ex.Message}";
-            Logger.LogError(ex, "Error al procesar la compra");
-        }
-        finally
-        {
-            procesando = false;
+            error = $"Ocurrió un error al verificar tu compra: {ex.Message}";
+            Logger.LogError(ex, "Error al verificar la compra");
         }
     }
 

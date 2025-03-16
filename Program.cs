@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data;
 using TelefonicaEmpresaria.Models;
 using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services;
 using TelefonicaEmpresarial.Areas.Identity;
+using TelefonicaEmpresarial.Middleware;
 using TelefonicaEmpresarial.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -39,6 +41,8 @@ builder.Services.AddScoped<ITwilioService, TwilioService>();
 builder.Services.AddScoped<ITelefonicaService, TelefonicaService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<ISaldoService, SaldoService>();
+builder.Services.AddScoped<IRequisitosRegulatoriosService, RequisitosRegulatoriosService>();
+builder.Services.AddScoped<IValidationService, ValidationService>();
 
 // Configuración de CORS si es necesario
 builder.Services.AddCors(options =>
@@ -69,9 +73,26 @@ else
     app.UseHsts();
 }
 
+app.UseGlobalExceptionHandler();
+
 app.UseHttpsRedirection();
 
-app.UseStaticFiles();
+app.UseStaticFiles(); // Ya debería estar configurado
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(Path.Combine(builder.Environment.WebRootPath, "documentos")),
+    RequestPath = "/documentos",
+    OnPrepareResponse = ctx =>
+    {
+        // Solo usuarios autenticados pueden acceder a los documentos
+        if (!ctx.Context.User.Identity.IsAuthenticated)
+        {
+            ctx.Context.Response.StatusCode = 401;
+            ctx.Context.Response.Body = Stream.Null;
+        }
+    }
+});
+Directory.CreateDirectory(Path.Combine(builder.Environment.WebRootPath, "documentos"));
 
 app.UseRouting();
 

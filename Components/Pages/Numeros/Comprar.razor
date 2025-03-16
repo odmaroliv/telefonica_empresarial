@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using Microsoft.AspNetCore.Identity
 @using System.Security.Claims
+@using Microsoft.AspNetCore.WebUtilities
 @using TelefonicaEmpresaria.Models
 @using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services
 @using TelefonicaEmpresarial.Services
@@ -15,6 +16,7 @@
 @inject ILogger<Comprar> Logger
 @inject ProtectedSessionStorage SessionStorage
 @inject ISaldoService SaldoService
+@inject IRequisitosRegulatoriosService RequisitosService
 
 
 <div class="container mx-auto px-4 py-8">
@@ -93,7 +95,7 @@
                              class="@(numeroSeleccionado?.Number == numero.Number ? "bg-blue-50 border-blue-500" : "bg-gray-50 border-gray-200") 
                                     border-2 rounded-lg p-4 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors">
                             <div class="font-bold text-lg mb-2">@FormatearNumero(numero.Number)</div>
-                            <div class="text-sm text-gray-600">Costo mensual: $@numero.MonthlyRentalRate.ToString("0.00") MXN</div>
+                           @*  <div class="text-sm text-gray-600">Costo mensual: $@numero.MonthlyRentalRate.ToString("0.00") MXN</div> *@
                             <div class="mt-2 flex">
                                 @if (numero.Voice)
                                 {
@@ -237,22 +239,52 @@
     private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
 
     
-
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         user = await UserManager.GetUserAsync(authState.User);
 
+        // Obtener país de la URL (si existe)
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("pais", out var pais))
+        {
+            paisSeleccionado = pais;
+        }
+
         // Cargar países disponibles
         await CargarPaises();
 
-        // Cargar números para el país predeterminado
+        // Cargar números para el país predeterminado o seleccionado
         await CargarNumeros();
+
         if (user != null)
         {
             saldoUsuario = await SaldoService.ObtenerSaldoUsuario(user.Id);
         }
     }
+
+    // Método auxiliar para obtener el usuario actual
+    private async Task<ApplicationUser?> GetCurrentUser()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        return await UserManager.GetUserAsync(authState.User);
+    }
+
+    // Añadir script JS al final para mostrar aviso de requisitos
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("eval", @"
+            window.mostrarAvisoRequisitos = function(codigoPais) {
+                if (confirm('Este país requiere documentación regulatoria. ¿Desea completarla ahora?\n\nPuede continuar con la compra y completar la documentación más tarde, pero algunos países tienen restricciones si no se verifica.')) {
+                    window.location.href = '/numeros/requisitos/' + codigoPais;
+                }
+            };
+        ");
+        }
+    }
+
     private async Task CargarPaises()
     {
         cargandoPaises = true;
@@ -324,6 +356,36 @@
     private async Task CambiarPais()
     {
         Logger.LogInformation($"Cambiando país a {paisSeleccionado}");
+
+        // Verificar si este país tiene requisitos regulatorios
+        var requisitosPais = await RequisitosService.ObtenerRequisitosPorPais(paisSeleccionado);
+
+        if (requisitosPais != null && requisitosPais.Activo)
+        {
+            // Verificar si el usuario ya cumple con los requisitos
+            var user = await GetCurrentUser();
+            if (user != null)
+            {
+                bool cumpleRequisitos = await RequisitosService.VerificarSiCumpleRequisitos(user.Id, paisSeleccionado);
+
+                if (!cumpleRequisitos && requisitosPais.RequiereVerificacionPreviaCompra)
+                {
+                    // Si el país requiere verificación previa, redirigir a la página de requisitos
+                    NavigationManager.NavigateTo($"/numeros/requisitos/{paisSeleccionado}");
+                    return;
+                }
+
+                // Si tiene requisitos pero no requiere verificación previa,
+                // mostrar un aviso y un botón para completar la documentación
+                if (!cumpleRequisitos)
+                {
+                    await JSRuntime.InvokeVoidAsync("mostrarAvisoRequisitos", paisSeleccionado);
+                }
+            }
+        }
+
+
+        // Continuar con el flujo normal
         await CargarNumeros();
     }
 

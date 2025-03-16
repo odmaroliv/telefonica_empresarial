@@ -92,7 +92,7 @@ namespace TelefonicaEmpresarial.Services
                 var costoBaseNumero = await _twilioService.ObtenerCostoNumero(numeroSeleccionado);
                 var costoBaseSMS = await _twilioService.ObtenerCostoSMS();
 
-                // Obtener configuración de margen de ganancia del sistema
+                // Obtener configuración de margen de ganancia
                 var margenNumero = await _retryPolicy.ExecuteAsync(async () =>
                     await _context.ConfiguracionesSistema
                         .Where(c => c.Clave == "MargenGanancia")
@@ -114,18 +114,39 @@ namespace TelefonicaEmpresarial.Services
                         .FirstOrDefaultAsync()
                 );
 
+                // Obtener costos mínimos garantizados
+                var costoMinimoNumero = await _retryPolicy.ExecuteAsync(async () =>
+                    await _context.ConfiguracionesSistema
+                        .Where(c => c.Clave == "CostoMinimoNumero")
+                        .Select(c => decimal.Parse(c.Valor))
+                        .FirstOrDefaultAsync()
+                );
+
+                var costoMinimoSMS = await _retryPolicy.ExecuteAsync(async () =>
+                    await _context.ConfiguracionesSistema
+                        .Where(c => c.Clave == "CostoMinimoSMS")
+                        .Select(c => decimal.Parse(c.Valor))
+                        .FirstOrDefaultAsync()
+                );
+
                 // Si no hay configuraciones, usar valores predeterminados
-                margenNumero = margenNumero == 0 ? 0.8m : margenNumero;
-                margenSMS = margenSMS == 0 ? 0.85m : margenSMS;
+                margenNumero = margenNumero == 0 ? 3.0m : margenNumero;
+                margenSMS = margenSMS == 0 ? 3.5m : margenSMS;
                 iva = iva == 0 ? 0.16m : iva;
+                costoMinimoNumero = costoMinimoNumero == 0 ? 100.0m : costoMinimoNumero;
+                costoMinimoSMS = costoMinimoSMS == 0 ? 25.0m : costoMinimoSMS;
 
                 // Calcular precios con margen e IVA
-                decimal costoFinalNumero = costoBaseNumero * (1 + margenNumero) * (1 + iva);
-                decimal costoFinalSMS = costoBaseSMS * (1 + margenSMS) * (1 + iva);
+                decimal costoNumeroConMargen = costoBaseNumero * (1 + margenNumero) * (1 + iva);
+                decimal costoSMSConMargen = costoBaseSMS * (1 + margenSMS) * (1 + iva);
+
+                // Asegurar que se cumplen los precios mínimos
+                decimal costoFinalNumero = Math.Max(costoNumeroConMargen, costoMinimoNumero);
+                decimal costoFinalSMS = Math.Max(costoSMSConMargen, costoMinimoSMS);
 
                 // Redondear a 2 decimales
-                costoFinalNumero = Math.Round(costoFinalNumero, 2);
-                costoFinalSMS = Math.Round(costoFinalSMS, 2);
+                costoFinalNumero = Math.Ceiling(costoFinalNumero);
+                costoFinalSMS = Math.Ceiling(costoFinalSMS);
 
                 _logger.LogInformation($"Costos calculados: Número=${costoFinalNumero}, SMS=${costoFinalSMS}");
 
@@ -134,10 +155,11 @@ namespace TelefonicaEmpresarial.Services
             catch (Exception ex)
             {
                 _logger.LogError($"Error al calcular costos: {ex.Message}");
-                // Valores predeterminados si hay un error
-                return (20.0m, 5.0m);
+                // Valores predeterminados si hay un error - aseguramos precios rentables
+                return (100.0m, 25.0m);
             }
         }
+
 
         public async Task<(NumeroTelefonico? Numero, string Error)> ComprarNumero(
             ApplicationUser usuario,

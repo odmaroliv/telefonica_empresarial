@@ -35,7 +35,7 @@ namespace TelefonicaEmpresarial.Controllers
 
                 // Crear TwiML
                 var response = new VoiceResponse();
-                response.Say("Redirigiendo su llamada, por favor espere.", voice: "alice", language: "es-MX");
+                //response.Say("Redirigiendo su llamada, por favor espere.", voice: "alice", language: "es-MX");
 
                 // Usar el método Dial directamente para evitar el formato anidado
                 response.Dial(redirectTo);

@@ -1,0 +1,622 @@
+﻿@page "/numeros/requisitos/{CodigoPais}"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using TelefonicaEmpresaria.Models
+@using TelefonicaEmpresarial.Services
+@attribute [Authorize]
+@inject UserManager<ApplicationUser> UserManager
+@inject IRequisitosRegulatoriosService RequisitosService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ILogger<RequisitosRegulatorios> Logger
+
+<div class="container mx-auto px-4 py-8">
+    <div class="flex items-center mb-8">
+        <button @onclick="Regresar" class="mr-3 text-gray-500 hover:text-gray-700">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+        </button>
+        <h1 class="text-3xl font-bold text-gray-800">Requisitos Regulatorios - @nombrePais</h1>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="flex justify-center py-8">
+            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+    }
+    else if (error != null)
+    {
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">
+            <strong class="font-bold">Error:</strong>
+            <span class="block sm:inline">@error</span>
+        </div>
+        <button @onclick="CargarDatos" class="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+            Intentar nuevamente
+        </button>
+    }
+    else if (requisitos == null)
+    {
+        <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded relative mb-6" role="alert">
+            <strong class="font-bold">Información:</strong>
+            <span class="block sm:inline">No se encontraron requisitos regulatorios para @nombrePais.</span>
+        </div>
+        <div class="mt-6">
+            <button @onclick="Continuar" class="px-5 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                Continuar con la compra
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="bg-white rounded-lg shadow-md overflow-hidden mb-8">
+            <div class="p-6">
+                <h2 class="text-xl font-semibold mb-4">Información Importante</h2>
+                <p class="text-gray-700 mb-4">
+                    Para adquirir números telefónicos en @nombrePais, la autoridad reguladora requiere la siguiente documentación:
+                </p>
+
+                <div class="bg-blue-50 p-4 rounded-lg mb-6">
+                    <ul class="space-y-2">
+                        @if (requisitos.RequiereIdentificacion)
+                        {
+                            <li class="flex items-start">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span>Identificación oficial vigente</span>
+                            </li>
+                        }
+                        @if (requisitos.RequiereComprobanteDomicilio)
+                        {
+                            <li class="flex items-start">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span>Comprobante de domicilio (no mayor a 3 meses)</span>
+                            </li>
+                        }
+                        @if (requisitos.RequiereDocumentoFiscal)
+                        {
+                            <li class="flex items-start">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span>Documento fiscal (@(CodigoPais == "MX" ? "RFC" : "Identificación tributaria"))</span>
+                            </li>
+                        }
+                        @if (requisitos.RequiereFormularioRegulatorio)
+                        {
+                            <li class="flex items-start">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span>Formulario regulatorio del país</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+
+                @if (requisitos.MaximoNumerosPermitidos.HasValue)
+                {
+                    <div class="bg-amber-50 p-4 rounded-lg border border-amber-200 mb-6">
+                        <p class="flex items-start">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-amber-500 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <span>Límite máximo: <strong>@requisitos.MaximoNumerosPermitidos números</strong> por cuenta en este país.</span>
+                        </p>
+                    </div>
+                }
+
+                <p class="text-gray-700 mb-4">@requisitos.InstruccionesVerificacion</p>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md overflow-hidden mb-8">
+            <div class="p-6">
+                <h2 class="text-xl font-semibold mb-4">Subir Documentación</h2>
+
+                @if (documentacion != null && documentacion.EstadoVerificacion == "Aprobado")
+                {
+                    <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-6" role="alert">
+                        <strong class="font-bold">¡Documentación aprobada!</strong>
+                        <span class="block sm:inline">Tu documentación para @nombrePais ha sido verificada y aprobada.</span>
+                    </div>
+
+                    <div class="mt-6">
+                        <button @onclick="Continuar" class="px-5 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                            Continuar con la compra
+                        </button>
+                    </div>
+                }
+                else if (documentacion != null && documentacion.EstadoVerificacion == "Rechazado")
+                {
+                    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">
+                        <strong class="font-bold">Documentación rechazada</strong>
+                        <span class="block sm:inline">
+                            @(string.IsNullOrEmpty(documentacion.MotivoRechazo)
+                                ? "Tu documentación no cumple con los requisitos regulatorios."
+                                : documentacion.MotivoRechazo)
+                        </span>
+                    </div>
+
+                    <p class="text-gray-700 mb-4">Por favor, actualiza los documentos rechazados y vuelve a intentarlo.</p>
+                }
+                else if (documentacion != null && documentacion.EstadoVerificacion == "Pendiente")
+                {
+                    <div class="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative mb-6" role="alert">
+                        <strong class="font-bold">Verificación en proceso</strong>
+                        <span class="block sm:inline">Tu documentación está siendo revisada por nuestro equipo. Este proceso puede tardar hasta 24 horas hábiles.</span>
+                    </div>
+
+                    <p class="text-gray-700 mb-4">Una vez aprobada, podrás continuar con la compra de números telefónicos.</p>
+                }
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    @if (requisitos.RequiereIdentificacion)
+                    {
+                        <div class="border rounded-lg p-4 @(EsDocumentoRechazado("identificacion") ? "border-red-300 bg-red-50" : "border-gray-200")">
+                            <h3 class="font-medium mb-2">Identificación Oficial</h3>
+
+                            @if (!string.IsNullOrEmpty(documentacion?.IdentificacionUrl))
+                            {
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-sm text-gray-500">Documento subido: @FormatearFecha(documentacion.FechaSubidaIdentificacion)</span>
+
+                                    @if (EsDocumentoRechazado("identificacion"))
+                                    {
+                                        <span class="text-xs text-red-600 font-medium">Rechazado</span>
+                                    }
+                                    else if (documentacion.EstadoVerificacion == "Aprobado")
+                                    {
+                                        <span class="text-xs text-green-600 font-medium">Aprobado</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-xs text-blue-600 font-medium">Pendiente</span>
+                                    }
+                                </div>
+
+                                <div class="flex justify-end">
+                                    <button @onclick='() => SubirDocumento(CodigoPais, "identificacion")'
+                                            class="text-sm text-blue-600 hover:text-blue-800">
+                                        Actualizar documento
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="text-sm text-gray-500 mb-2">Sube una copia de tu identificación oficial vigente (INE, pasaporte, etc.)</p>
+
+                                <div class="mt-2">
+                                    <button @onclick='() => SubirDocumento(CodigoPais, "identificacion")'
+                                            class="w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                                        Subir Identificación
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @if (requisitos.RequiereComprobanteDomicilio)
+                    {
+                        <div class="border rounded-lg p-4 @(EsDocumentoRechazado("comprobanteDomicilio") ? "border-red-300 bg-red-50" : "border-gray-200")">
+                            <h3 class="font-medium mb-2">Comprobante de Domicilio</h3>
+
+                            @if (!string.IsNullOrEmpty(documentacion?.ComprobanteDomicilioUrl))
+                            {
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-sm text-gray-500">Documento subido: @FormatearFecha(documentacion.FechaSubidaComprobanteDomicilio)</span>
+
+                                    @if (EsDocumentoRechazado("comprobanteDomicilio"))
+                                    {
+                                        <span class="text-xs text-red-600 font-medium">Rechazado</span>
+                                    }
+                                    else if (documentacion.EstadoVerificacion == "Aprobado")
+                                    {
+                                        <span class="text-xs text-green-600 font-medium">Aprobado</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-xs text-blue-600 font-medium">Pendiente</span>
+                                    }
+                                </div>
+
+                                <div class="flex justify-end">
+                                    <button @onclick='() => SubirDocumento(CodigoPais, "comprobanteDomicilio")'
+                                            class="text-sm text-blue-600 hover:text-blue-800">
+                                        Actualizar documento
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="text-sm text-gray-500 mb-2">Sube un comprobante de domicilio reciente (no mayor a 3 meses)</p>
+
+                                <div class="mt-2">
+                                    <button @onclick='() => SubirDocumento(CodigoPais, "comprobanteDomicilio")'
+                                            class="w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                                        Subir Comprobante
+                                    </button>
+
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @if (requisitos.RequiereDocumentoFiscal)
+                    {
+                        <div class="border rounded-lg p-4 @(EsDocumentoRechazado("documentoFiscal") ? "border-red-300 bg-red-50" : "border-gray-200")">
+                            <h3 class="font-medium mb-2">Documento Fiscal</h3>
+
+                            @if (!string.IsNullOrEmpty(documentacion?.DocumentoFiscalUrl))
+                            {
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-sm text-gray-500">Documento subido: @FormatearFecha(documentacion.FechaSubidaDocumentoFiscal)</span>
+
+                                    @if (EsDocumentoRechazado("documentoFiscal"))
+                                    {
+                                        <span class="text-xs text-red-600 font-medium">Rechazado</span>
+                                    }
+                                    else if (documentacion.EstadoVerificacion == "Aprobado")
+                                    {
+                                        <span class="text-xs text-green-600 font-medium">Aprobado</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-xs text-blue-600 font-medium">Pendiente</span>
+                                    }
+                                </div>
+
+                                <div class="flex justify-end">
+                                    <button @onclick='() => SubirDocumento(CodigoPais, "documentoFiscal")'
+                                            class="text-sm text-blue-600 hover:text-blue-800">
+                                        Actualizar documento
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="text-sm text-gray-500 mb-2">Sube tu @(CodigoPais == "MX" ? "constancia de situación fiscal (RFC)" : "identificación tributaria")</p>
+
+                                <div class="mt-2">
+                                    <button @onclick='() => SubirDocumento(CodigoPais,"documentoFiscal")'
+                                            class="w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                                        Subir Documento Fiscal
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @if (requisitos.RequiereFormularioRegulatorio)
+                    {
+                        <div class="border rounded-lg p-4 @(EsDocumentoRechazado("formularioRegulatorio") ? "border-red-300 bg-red-50" : "border-gray-200")">
+                            <h3 class="font-medium mb-2">Formulario Regulatorio</h3>
+
+                            @if (!string.IsNullOrEmpty(documentacion?.FormularioRegulatorioUrl))
+                            {
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-sm text-gray-500">Documento subido: @FormatearFecha(documentacion.FechaSubidaFormularioRegulatorio)</span>
+
+                                    @if (EsDocumentoRechazado("formularioRegulatorio"))
+                                    {
+                                        <span class="text-xs text-red-600 font-medium">Rechazado</span>
+                                    }
+                                    else if (documentacion.EstadoVerificacion == "Aprobado")
+                                    {
+                                        <span class="text-xs text-green-600 font-medium">Aprobado</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-xs text-blue-600 font-medium">Pendiente</span>
+                                    }
+                                </div>
+
+                                <div class="flex justify-end">
+                                    <button @onclick='() => SubirDocumento(CodigoPais, "formularioRegulatorio")'
+                                            class="text-sm text-blue-600 hover:text-blue-800">
+                                        Actualizar documento
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="text-sm text-gray-500 mb-2">Descarga, completa y sube el formulario regulatorio requerido</p>
+
+                                <div class="flex flex-col space-y-2 mt-2">
+                                    <a href="/formularios/formulario_@(CodigoPais).pdf" target="_blank" download
+                                       class="text-sm text-blue-600 hover:text-blue-800">
+                                        Descargar formulario
+                                    </a>
+
+                                    <button @onclick='() => SubirDocumento(CodigoPais, "formularioRegulatorio")'
+                                            class="w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                                        Subir Formulario
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                @if (documentacion != null && documentacion.EstadoVerificacion == "Pendiente" && TieneDocumentosCompletos())
+                {
+                    <div class="mt-6 text-center">
+                        <p class="text-gray-700 mb-4">Todos los documentos han sido enviados y están en revisión.</p>
+                        <button @onclick="ActualizarEstado" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                            Actualizar Estado
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (!requisitos.RequiereVerificacionPreviaCompra && PuedeContinuar())
+        {
+            <div class="mt-6">
+                <button @onclick="Continuar" class="px-5 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                    Continuar con la compra
+                </button>
+
+                @if (documentacion == null || documentacion.EstadoVerificacion != "Aprobado")
+                {
+                    <p class="mt-2 text-xs text-gray-500">
+                        Puedes continuar, pero deberás completar la verificación antes del próximo ciclo de facturación.
+                    </p>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string CodigoPais { get; set; } = "MX";
+
+    private bool cargando = true;
+    private string? error;
+    private string nombrePais = "";
+    private Models.RequisitosRegulatorios? requisitos;
+    private DocumentacionUsuario? documentacion;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        cargando = true;
+        error = null;
+
+        try
+        {
+            Logger.LogInformation($"Cargando requisitos para país {CodigoPais}");
+
+            // Obtener requisitos del país
+            requisitos = await RequisitosService.ObtenerRequisitosPorPais(CodigoPais);
+
+            if (requisitos != null)
+            {
+                nombrePais = requisitos.Nombre;
+
+                // Cargar documentación del usuario
+                var user = await GetCurrentUser();
+                if (user != null)
+                {
+                    documentacion = await RequisitosService.ObtenerDocumentacionUsuario(user.Id, CodigoPais);
+                }
+            }
+            else
+            {
+                // Intentar determinar el nombre del país por el código
+                nombrePais = GetNombrePaisPorCodigo(CodigoPais);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error al cargar requisitos para {CodigoPais}");
+            error = $"Error al cargar requisitos regulatorios: {ex.Message}";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private string GetNombrePaisPorCodigo(string codigo)
+    {
+        var paises = new Dictionary<string, string>
+        {
+            { "MX", "México" },
+            { "US", "Estados Unidos" },
+            { "CA", "Canadá" },
+            { "BR", "Brasil" },
+            { "CO", "Colombia" },
+            { "ES", "España" },
+            { "AR", "Argentina" },
+            { "CL", "Chile" }
+        };
+
+        return paises.ContainsKey(codigo) ? paises[codigo] : codigo;
+    }
+
+    private async Task<ApplicationUser?> GetCurrentUser()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        return await UserManager.GetUserAsync(authState.User);
+    }
+
+    private async Task SubirDocumento(string codigoPais, string tipoDocumento)
+    {
+        try
+        {
+            // Usar JS para mostrar selector de archivos
+            await JSRuntime.InvokeVoidAsync("abrirSelectorArchivos", codigoPais, tipoDocumento);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error al intentar subir documento {tipoDocumento} para {codigoPais}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private async Task ActualizarEstado()
+    {
+        try
+        {
+            await CargarDatos();
+            await JSRuntime.InvokeVoidAsync("alert", "Estado actualizado");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al actualizar estado");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private bool TieneDocumentosCompletos()
+    {
+        if (documentacion == null || requisitos == null)
+            return false;
+
+        bool tieneIdentificacion = !requisitos.RequiereIdentificacion || !string.IsNullOrEmpty(documentacion.IdentificacionUrl);
+        bool tieneComprobante = !requisitos.RequiereComprobanteDomicilio || !string.IsNullOrEmpty(documentacion.ComprobanteDomicilioUrl);
+        bool tieneDocFiscal = !requisitos.RequiereDocumentoFiscal || !string.IsNullOrEmpty(documentacion.DocumentoFiscalUrl);
+        bool tieneFormulario = !requisitos.RequiereFormularioRegulatorio || !string.IsNullOrEmpty(documentacion.FormularioRegulatorioUrl);
+
+        return tieneIdentificacion && tieneComprobante && tieneDocFiscal && tieneFormulario;
+    }
+
+    private bool PuedeContinuar()
+    {
+        if (requisitos == null)
+            return true; // Si no hay requisitos, permitir continuar
+
+        if (requisitos.RequiereVerificacionPreviaCompra)
+        {
+            // Verificar si la documentación está aprobada
+            return documentacion != null && documentacion.EstadoVerificacion == "Aprobado";
+        }
+
+        // Si no requiere verificación previa, puede continuar
+        return true;
+    }
+
+    private bool EsDocumentoRechazado(string tipoDocumento)
+    {
+        if (documentacion == null || documentacion.EstadoVerificacion != "Rechazado")
+            return false;
+
+        // Verificar si el documento específico ha sido rechazado
+        // Esta es una simplificación; en un caso real, el backend podría indicar qué documentos específicos fueron rechazados
+        return documentacion.EstadoVerificacion == "Rechazado";
+    }
+
+    private string FormatearFecha(DateTime? fecha)
+    {
+        return fecha?.ToString("dd/MM/yyyy HH:mm") ?? "";
+    }
+
+    private void Regresar()
+    {
+        NavigationManager.NavigateTo("/numeros/comprar");
+    }
+
+    private void Continuar()
+    {
+        // Usar el querystring para mantener la selección de país
+        NavigationManager.NavigateTo($"/numeros/comprar?pais={CodigoPais}");
+    }
+
+    [Inject]
+    private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
+
+    // Al final del componente, agregar el script JavaScript para el selector de archivos
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                window.abrirSelectorArchivos = function(codigoPais, tipoDocumento) {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.pdf,.jpg,.jpeg,.png';
+
+                    input.onchange = function() {
+                        if (input.files && input.files[0]) {
+                            // Validar tipo de archivo
+                            const file = input.files[0];
+                            const fileType = file.type;
+                            const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+
+                            if (!validTypes.includes(fileType)) {
+                                alert('Tipo de archivo no válido. Solo se aceptan PDF, JPG y PNG.');
+                                return;
+                            }
+
+                            // Validar tamaño (máximo 5MB)
+                            if (file.size > 5 * 1024 * 1024) {
+                                alert('El archivo excede el tamaño máximo permitido (5MB)');
+                                return;
+                            }
+
+                            // Crear FormData y enviar
+                            const formData = new FormData();
+                            formData.append('archivo', file);
+
+                            // Mostrar indicador de carga
+                            const loadingEl = document.createElement('div');
+                            loadingEl.textContent = 'Subiendo documento...';
+                            loadingEl.style.position = 'fixed';
+                            loadingEl.style.top = '50%';
+                            loadingEl.style.left = '50%';
+                            loadingEl.style.transform = 'translate(-50%, -50%)';
+                            loadingEl.style.padding = '1rem 2rem';
+                            loadingEl.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+                            loadingEl.style.color = 'white';
+                            loadingEl.style.borderRadius = '0.5rem';
+                            loadingEl.style.zIndex = '9999';
+                            document.body.appendChild(loadingEl);
+
+                            // Enviar archivo
+                            fetch(`/api/documentacion/subir/${codigoPais}/${tipoDocumento}`, {
+                                method: 'POST',
+                                body: formData
+                            })
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error('Error al subir documento');
+                                }
+                                return response.json();
+                            })
+                            .then(data => {
+                                // Eliminar indicador de carga
+                                document.body.removeChild(loadingEl);
+
+                                // Mostrar mensaje de éxito
+                                alert('Documento subido correctamente');
+
+                                // Recargar página
+                                window.location.reload();
+                            })
+                            .catch(error => {
+                                // Eliminar indicador de carga
+                                document.body.removeChild(loadingEl);
+
+                                // Mostrar error
+                                alert('Error: ' + error.message);
+                            });
+                        }
+                    };
+
+                    input.click();
+                };
+            ");
+        }
+    }
+}

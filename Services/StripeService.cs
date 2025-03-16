@@ -19,12 +19,15 @@ namespace TelefonicaEmpresarial.Services
         Task<bool> ActualizarSuscripcion(string subscriptionId, decimal nuevoCosto);
         Task<bool> AgregarSMSASuscripcion(string subscriptionId, decimal costoSMS);
         Task<bool> QuitarSMSDeSuscripcion(string subscriptionId);
-        Task ProcesarEventoWebhook(string json, string signatureHeader);
+        Task ProcesarEventoWebhook(string json, string signatureHeader, CancellationToken cancellationToken = default);
         Task<string?> ObtenerURLPago(string sessionId);
 
         //saldo
         Task<StripeCheckoutSession> CrearSesionRecarga(string customerId, decimal monto);
         Task<Stripe.Checkout.Session> ObtenerDetallesSesion(string sessionId);
+
+
+
 
     }
 
@@ -512,25 +515,46 @@ namespace TelefonicaEmpresarial.Services
             });
         }
 
-        public async Task ProcesarEventoWebhook(string json, string signatureHeader)
+        public async Task ProcesarEventoWebhook(string json, string signatureHeader, CancellationToken cancellationToken = default)
         {
             try
             {
                 _logger.LogInformation("Procesando webhook de Stripe");
 
-                // Verificar que el webhook es auténtico
-                var stripeEvent = EventUtility.ConstructEvent(
-                    json,
-                    signatureHeader,
-                    _webhookSecret
-                );
+                // Verificar que el webhook es auténtico con manejo de errores mejorado
+                Event stripeEvent;
+                try
+                {
+                    stripeEvent = EventUtility.ConstructEvent(
+                        json,
+                        signatureHeader,
+                        _webhookSecret,
+                        300 // Tolerancia de 5 minutos para diferencias de reloj
+                    );
+                }
+                catch (StripeException ex) when (ex.StripeError?.Type == "signature_verification_failure")
+                {
+                    _logger.LogWarning(ex, "Verificación de firma de Stripe fallida");
+                    throw; // Propagar para manejar en el controller
+                }
 
-                _logger.LogInformation($"Evento Stripe recibido de tipo: {stripeEvent.Type}");
+                _logger.LogInformation($"Evento Stripe recibido de tipo: {stripeEvent.Type}, ID: {stripeEvent.Id}");
+
+                // Verificar si el evento ya fue procesado (idempotencia)
+                bool yaFueProcesado = await VerificarEventoProcesado(stripeEvent.Id);
+                if (yaFueProcesado)
+                {
+                    _logger.LogInformation($"Evento Stripe {stripeEvent.Id} ya fue procesado anteriormente");
+                    return;
+                }
+
+                // Registrar que empezamos a procesar este evento
+                await RegistrarProcesamientoEvento(stripeEvent.Id);
+
 
                 // Manejar eventos relevantes
                 switch (stripeEvent.Type)
                 {
-
                     case "invoice.paid":
                         var invoice = stripeEvent.Data.Object as Invoice;
                         await ManejarPagoExitoso(invoice);
@@ -562,7 +586,18 @@ namespace TelefonicaEmpresarial.Services
                             await ManejarSesionCompletada(sesionCompletada);
                         }
                         break;
+
+                    case "payment_intent.succeeded":
+                        var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
+                        // Procesar pago exitoso (si es necesario)
+                        break;
+
+                    case "payment_intent.payment_failed":
+                        var paymentFailed = stripeEvent.Data.Object as PaymentIntent;
+                        // Procesar pago fallido (si es necesario)
+                        break;
                 }
+                await MarcarEventoComoCompletado(stripeEvent.Id);
             }
             catch (StripeException ex)
             {
@@ -576,7 +611,74 @@ namespace TelefonicaEmpresarial.Services
             }
         }
 
-        // Añadir al método ProcesarEventoWebhook en StripeService.cs o crear un método específico:
+        // Método para verificar si un evento ya fue procesado (idempotencia)
+        private async Task<bool> VerificarEventoProcesado(string eventId)
+        {
+            try
+            {
+                // Verificar en una tabla específica o mediante otro mecanismo
+                var eventoRegistrado = await _context.EventosWebhook
+                    .AnyAsync(e => e.EventoId == eventId && e.Completado);
+
+                return eventoRegistrado;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al verificar procesamiento de evento {eventId}");
+                return false; // Ante la duda, procesar nuevamente
+            }
+        }
+
+        // Métodos adicionales para registro de eventos
+        private async Task RegistrarProcesamientoEvento(string eventId)
+        {
+            try
+            {
+                // Crear o actualizar registro del evento
+                var evento = await _context.EventosWebhook.FindAsync(eventId);
+                if (evento == null)
+                {
+                    evento = new EventoWebhook
+                    {
+                        EventoId = eventId,
+                        FechaRecibido = DateTime.UtcNow,
+                        Completado = false
+                    };
+                    _context.EventosWebhook.Add(evento);
+                }
+                else
+                {
+                    evento.FechaUltimoIntento = DateTime.UtcNow;
+                    evento.NumeroIntentos += 1;
+                }
+
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al registrar inicio de procesamiento del evento {eventId}");
+                // Continuar a pesar del error
+            }
+        }
+
+        private async Task MarcarEventoComoCompletado(string eventId)
+        {
+            try
+            {
+                var evento = await _context.EventosWebhook.FindAsync(eventId);
+                if (evento != null)
+                {
+                    evento.Completado = true;
+                    evento.FechaCompletado = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al marcar evento {eventId} como completado");
+                // Continuar a pesar del error
+            }
+        }
 
         private async Task ProcesarRecargaSaldo(string sessionId)
         {
@@ -615,22 +717,34 @@ namespace TelefonicaEmpresarial.Services
                 // Calcular monto (Stripe usa centavos)
                 decimal monto = (decimal)session.AmountTotal / 100;
 
-                // Registrar la recarga
-
-                var resultado = await saldoService.AgregarSaldo(
-                    usuario.Id,
-                    monto,
-                    "Recarga de saldo (webhook)",
-                    sessionId
-                );
-
-                if (resultado)
+                // Registrar la recarga con transacción de BD
+                using var dbTransaction = await _context.Database.BeginTransactionAsync();
+                try
                 {
-                    _logger.LogInformation($"Recarga de ${monto} procesada correctamente para usuario {usuario.Id} mediante webhook");
+                    // Usar un bloqueo optimista en la tabla de saldo para evitar condiciones de carrera
+                    var resultado = await saldoService.AgregarSaldo(
+                        usuario.Id,
+                        monto,
+                        "Recarga de saldo (webhook)",
+                        sessionId
+                    );
+
+                    if (resultado)
+                    {
+                        await dbTransaction.CommitAsync();
+                        _logger.LogInformation($"Recarga de ${monto} procesada correctamente para usuario {usuario.Id} mediante webhook");
+                    }
+                    else
+                    {
+                        await dbTransaction.RollbackAsync();
+                        _logger.LogError($"Error al procesar recarga mediante webhook para sesión {sessionId}");
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    _logger.LogError($"Error al procesar recarga mediante webhook para sesión {sessionId}");
+                    await dbTransaction.RollbackAsync();
+                    _logger.LogError(ex, $"Error en transacción de BD al procesar recarga para sesión {sessionId}");
+                    throw;
                 }
             }
             catch (Exception ex)
@@ -638,6 +752,43 @@ namespace TelefonicaEmpresarial.Services
                 _logger.LogError(ex, $"Error al procesar recarga de saldo para sesión {sessionId}");
             }
         }
+
+        /// <summary>
+        /// Verifica si una transacción de recarga ya fue procesada
+        /// </summary>
+        private async Task<bool> VerificarTransaccionYaProcesada(string sessionId, string userId)
+        {
+            try
+            {
+                // Verificar si ya existe un registro para esta sesión
+                var transaccionExistente = await _context.MovimientosSaldo
+                    .AnyAsync(m => m.ReferenciaExterna == sessionId);
+
+                if (transaccionExistente)
+                {
+                    _logger.LogInformation($"La transacción {sessionId} ya fue procesada anteriormente");
+                    return true;
+                }
+
+                // Verificar en las transacciones de números también
+                var compraNumeroProcesada = await _context.Transacciones
+                    .AnyAsync(t => t.StripePaymentId == sessionId);
+
+                if (compraNumeroProcesada)
+                {
+                    _logger.LogInformation($"La compra con sesión {sessionId} ya fue procesada anteriormente");
+                    return true;
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al verificar si la transacción {sessionId} ya fue procesada");
+                return false; // En caso de error, asumimos que no está procesada para evitar perder transacciones
+            }
+        }
+
 
         private async Task ManejarSesionCompletada(Session sesion)
         {
