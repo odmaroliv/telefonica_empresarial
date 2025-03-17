@@ -1,0 +1,570 @@
+﻿@page "/numeros/llamar"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using System.Security.Claims
+@using TelefonicaEmpresaria.Models
+@using System.Text.Json
+@using TelefonicaEmpresaria.Services
+@using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services
+@using TelefonicaEmpresarial.Services
+@attribute [Authorize]
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ILogger<RealizarLlamadaComponent> Logger
+@inject ILlamadasService LlamadasService
+@inject ITelefonicaService TelefonicaService
+@inject ISaldoService SaldoService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<div class="container mx-auto px-4 py-8">
+    <div class="flex items-center mb-8">
+        <button @onclick="Regresar" class="mr-3 text-gray-500 hover:text-gray-700">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+        </button>
+        <h1 class="text-3xl font-bold text-gray-800">Realizar Llamada</h1>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <h2 class="text-xl font-semibold mb-6">Datos de la Llamada</h2>
+
+        @if (cargando)
+        {
+            <div class="flex justify-center py-8">
+                <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+        }
+        else if (error != null)
+        {
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">
+                <strong class="font-bold">Error:</strong>
+                <span class="block sm:inline">@error</span>
+            </div>
+            <button @onclick="CargarNumeros" class="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                Intentar nuevamente
+            </button>
+        }
+        else
+        {
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Número de origen</label>
+                <select @bind="numeroSeleccionadoId" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white">
+                    <option value="0">Selecciona un número</option>
+                    @if (numerosDisponibles != null)
+                    {
+                        @foreach (var numero in numerosDisponibles)
+                        {
+                            <option value="@numero.Id">@FormatearNumero(numero.Numero)</option>
+                        }
+                    }
+                </select>
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Número de destino</label>
+                <input type="tel" @bind="numeroDestino" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="+52 1 123 456 7890" />
+                <p class="mt-1 text-xs text-gray-500">Formato internacional con código de país (ej: +521234567890)</p>
+            </div>
+
+            @if (costoEstimado.HasValue)
+            {
+                <div class="mb-6 p-4 bg-blue-50 rounded-lg">
+                    <h3 class="font-medium mb-2">Costo estimado:</h3>
+                    <p class="text-xl font-bold text-blue-600">$@costoEstimado.Value.ToString("0.00") MXN</p>
+                    <p class="mt-1 text-xs text-gray-500">Por minuto de llamada. Se cobra por segundo después del primer minuto.</p>
+                </div>
+            }
+
+            <div class="mt-6 space-y-3">
+                @if (llamadaEnCurso)
+                {
+                    <div class="p-4 bg-green-50 rounded-lg mb-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h3 class="font-medium">Llamada en curso</h3>
+                                <p>Duración: @duracionLlamada</p>
+                            </div>
+                            <div>
+                                <button @onclick="FinalizarLlamada" class="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                        <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                                        <path d="M16.707 3.293a1 1 0 010 1.414L15.414 6l1.293 1.293a1 1 0 01-1.414 1.414L14 7.414l-1.293 1.293a1 1 0 11-1.414-1.414L12.586 6l-1.293-1.293a1 1 0 011.414-1.414L14 4.586l1.293-1.293a1 1 0 011.414 0z" />
+                                    </svg>
+                                    Finalizar Llamada
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <button @onclick="IniciarLlamada" disabled="@(numeroSeleccionadoId <= 0 || string.IsNullOrEmpty(numeroDestino) || iniciandoLlamada)" class="w-full inline-flex justify-center items-center px-4 py-3 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        @if (iniciandoLlamada)
+                        {
+                            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span>Iniciando llamada...</span>
+                        }
+                        else
+                        {
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                            </svg>
+                            <span>Iniciar Llamada</span>
+                        }
+                    </button>
+
+                    <button @onclick="EstimarCosto" disabled="@(numeroSeleccionadoId <= 0 || string.IsNullOrEmpty(numeroDestino))" class="w-full inline-flex justify-center items-center px-4 py-2 border border-blue-600 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
+                        </svg>
+                        <span>Estimar Costo</span>
+                    </button>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md overflow-hidden mb-8">
+        <div class="p-6 border-b">
+            <h2 class="text-xl font-semibold text-gray-800">Historial de Llamadas</h2>
+        </div>
+
+        @if (cargandoHistorial)
+        {
+            <div class="flex justify-center py-8">
+                <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+        }
+        else if (errorHistorial != null)
+        {
+            <div class="p-6">
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                    <strong class="font-bold">Error:</strong>
+                    <span class="block sm:inline">@errorHistorial</span>
+                </div>
+            </div>
+        }
+        else if (historialLlamadas?.Count == 0)
+        {
+            <div class="p-6 text-center">
+                <p class="text-gray-500">No hay llamadas registradas.</p>
+            </div>
+        }
+        else
+        {
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Destino</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duración</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Costo</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        @foreach (var llamada in historialLlamadas)
+                        {
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @llamada.FechaInicio.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    @FormatearNumero(llamada.NumeroDestino)
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @(llamada.Duracion.HasValue ? FormatearDuracion(llamada.Duracion.Value) : "-")
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    @{
+                                        var (bgClass, textClass, label) = ObtenerEstiloEstado(llamada.Estado);
+                                    }
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full @bgClass @textClass">
+                                        @label
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    @(llamada.Costo.HasValue ? $"${llamada.Costo.Value:0.00}" : "-")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    // Variables para UI
+    private bool cargando = true;
+    private bool cargandoHistorial = true;
+    private string? error;
+    private string? errorHistorial;
+    private bool iniciandoLlamada = false;
+    private bool llamadaEnCurso = false;
+    private string duracionLlamada = "00:00";
+    private System.Threading.Timer? timerDuracion;
+    private DateTime? inicioLlamada;
+
+    // Variables para datos
+    private List<NumeroTelefonico>? numerosDisponibles;
+    private int numeroSeleccionadoId = 0;
+    private string numeroDestino = "";
+    private int? llamadaActualId;
+    private decimal? costoEstimado;
+    private List<LlamadaSaliente> historialLlamadas = new List<LlamadaSaliente>();
+
+    private System.Threading.Timer? heartbeatTimer;
+    private System.Threading.Timer? timerVerificacion;
+
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarNumeros();
+        await CargarHistorialLlamadas();
+
+        if (heartbeatTimer == null)
+        {
+            heartbeatTimer = new System.Threading.Timer(
+                EnviarHeartbeat,
+                null,
+                0,
+                10000); // 10 segundos
+        }
+
+        timerVerificacion = new System.Threading.Timer(
+                VerificarEstadoLlamada,
+                null,
+                5000, // Empezar después de 5 segundos
+                5000); // Verificar cada 5 segundos
+    }
+    // En OnDispose, detener el timer
+    public void Dispose()
+    {
+        if (timerVerificacion != null)
+        {
+            timerVerificacion.Dispose();
+            timerVerificacion = null;
+        }
+
+        if (timerDuracion != null)
+        {
+            timerDuracion.Dispose();
+            timerDuracion = null;
+        }
+        if (heartbeatTimer != null)
+        {
+            heartbeatTimer.Dispose();
+            heartbeatTimer = null;
+        }
+       
+       
+    }
+    private async void VerificarEstadoLlamada(object? state)
+    {
+        try
+        {
+            if (llamadaEnCurso && llamadaActualId.HasValue)
+            {
+                var userId = await ObtenerUsuarioActualId();
+                var (llamada, error) = await LlamadasService.ObtenerEstadoLlamada(llamadaActualId.Value, userId);
+
+                if (!string.IsNullOrEmpty(error))
+                {
+                    // Si hay error, no hacer nada
+                    return;
+                }
+
+                // Si la llamada ya no está en curso, actualizar la UI
+                if (llamada.Estado != "en-curso" && llamada.Estado != "iniciando")
+                {
+                    // Detener el temporizador de duración
+                    timerDuracion?.Dispose();
+                    timerDuracion = null;
+
+                    // Detener el temporizador de verificación
+                    timerVerificacion?.Dispose();
+                    timerVerificacion = null;
+
+                    // Actualizar la UI
+                    llamadaEnCurso = false;
+                    llamadaActualId = null;
+
+                    // Recargar historial
+                    await InvokeAsync(async () =>
+                    {
+                        await CargarHistorialLlamadas();
+                        StateHasChanged();
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // No loguear errores menores para no saturar los logs
+        }
+    }
+
+
+    // Método para enviar heartbeat
+    private async void EnviarHeartbeat(object? state)
+    {
+        try
+        {
+            if (llamadaEnCurso && llamadaActualId.HasValue)
+            {
+                var userId = await ObtenerUsuarioActualId();
+                await LlamadasService.ActualizarHeartbeat(llamadaActualId.Value, userId);
+            }
+        }
+        catch (Exception ex)
+        {
+            // No loguear errores menores de heartbeat para no saturar los logs
+        }
+    }
+    private async Task<string> ObtenerUsuarioActualId()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        return authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+               ?? throw new InvalidOperationException("Usuario no autenticado");
+    }
+
+    private async Task CargarNumeros()
+    {
+        cargando = true;
+        error = null;
+
+        try
+        {
+            // Obtener números directamente del servicio
+            var userId = await ObtenerUsuarioActualId();
+            numerosDisponibles = await TelefonicaService.ObtenerNumerosPorUsuario(userId);
+
+            // Filtrar solo números activos
+            numerosDisponibles = numerosDisponibles?.Where(n => n.Activo).ToList();
+        }
+        catch (Exception ex)
+        {
+            error = "Error al cargar números telefónicos";
+            Logger.LogError(ex, "Error al cargar números telefónicos");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task CargarHistorialLlamadas()
+    {
+        cargandoHistorial = true;
+        errorHistorial = null;
+
+        try
+        {
+            // Obtener el historial directamente del servicio
+            var userId = await ObtenerUsuarioActualId();
+            historialLlamadas = await LlamadasService.ObtenerHistorialLlamadas(userId, 50);
+        }
+        catch (Exception ex)
+        {
+            errorHistorial = "Error al cargar historial de llamadas";
+            Logger.LogError(ex, "Error al cargar historial de llamadas");
+            historialLlamadas = new List<LlamadaSaliente>(); // Inicializar con lista vacía
+        }
+        finally
+        {
+            cargandoHistorial = false;
+        }
+    }
+
+    private async Task EstimarCosto()
+    {
+        try
+        {
+            if (numeroSeleccionadoId <= 0 || string.IsNullOrEmpty(numeroDestino))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Por favor, selecciona un número de origen y destino.");
+                return;
+            }
+
+            var numeroOrigen = numerosDisponibles?.FirstOrDefault(n => n.Id == numeroSeleccionadoId)?.Numero;
+            if (string.IsNullOrEmpty(numeroOrigen))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo obtener el número de origen.");
+                return;
+            }
+
+            // Calcular costo directamente con el servicio
+            costoEstimado = await LlamadasService.CalcularCostoEstimadoLlamada(
+                numeroOrigen,
+                numeroDestino,
+                1 // duración estimada en minutos
+            );
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al estimar costo");
+            await JSRuntime.InvokeVoidAsync("alert", "Error al estimar costo de la llamada.");
+        }
+    }
+
+    private async Task IniciarLlamada()
+    {
+        try
+        {
+            if (numeroSeleccionadoId <= 0 || string.IsNullOrEmpty(numeroDestino))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Por favor, selecciona un número de origen y destino.");
+                return;
+            }
+
+            iniciandoLlamada = true;
+
+            var userId = await ObtenerUsuarioActualId();
+            var (llamada, error) = await LlamadasService.IniciarLlamada(
+                numeroSeleccionadoId,
+                numeroDestino,
+                userId);
+
+            if (!string.IsNullOrEmpty(error))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error al iniciar llamada: {error}");
+                return;
+            }
+
+            // Iniciar la llamada en la UI
+            llamadaActualId = llamada.Id;
+            llamadaEnCurso = true;
+            inicioLlamada = DateTime.Now;
+
+            // Iniciar temporizador para la duración
+            timerDuracion = new System.Threading.Timer(
+                ActualizarDuracionLlamada,
+                null,
+                0,
+                1000); // Actualizar cada segundo
+
+            await CargarHistorialLlamadas();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al iniciar llamada");
+            await JSRuntime.InvokeVoidAsync("alert", "Error al iniciar la llamada.");
+        }
+        finally
+        {
+            iniciandoLlamada = false;
+        }
+    }
+
+    private async Task FinalizarLlamada()
+    {
+        try
+        {
+            if (!llamadaActualId.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No hay una llamada activa para finalizar.");
+                return;
+            }
+
+            var userId = await ObtenerUsuarioActualId();
+            bool resultado = await LlamadasService.FinalizarLlamada(llamadaActualId.Value, userId);
+
+            if (resultado)
+            {
+
+                heartbeatTimer?.Dispose();
+                heartbeatTimer = null;
+                // Detener el temporizador
+                timerDuracion?.Dispose();
+                timerDuracion = null;
+
+                timerVerificacion?.Dispose();
+                timerVerificacion = null;
+                // Actualizar la UI
+                llamadaEnCurso = false;
+                llamadaActualId = null;
+                inicioLlamada = null;
+
+                await CargarHistorialLlamadas();
+
+                await JSRuntime.InvokeVoidAsync("alert", "Llamada finalizada correctamente.");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo finalizar la llamada.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al finalizar llamada");
+            await JSRuntime.InvokeVoidAsync("alert", "Error al finalizar la llamada.");
+        }
+    }
+
+    private void ActualizarDuracionLlamada(object? state)
+    {
+        if (inicioLlamada.HasValue)
+        {
+            var duracion = DateTime.Now - inicioLlamada.Value;
+            duracionLlamada = $"{duracion.Minutes:D2}:{duracion.Seconds:D2}";
+
+            // Esto es necesario porque el timer se ejecuta en un hilo diferente
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private string FormatearNumero(string? numero)
+    {
+        if (string.IsNullOrEmpty(numero))
+            return "";
+
+        // Formato para distintos países
+        if (numero.StartsWith("+52") && numero.Length >= 13)
+        {
+            // Formato México: +52 (XXX) XXX-XXXX
+            return $"+52 ({numero.Substring(3, 3)}) {numero.Substring(6, 3)}-{numero.Substring(9)}";
+        }
+        else if (numero.StartsWith("+1") && numero.Length >= 12)
+        {
+            // Formato US/Canadá: +1 (XXX) XXX-XXXX
+            return $"+1 ({numero.Substring(2, 3)}) {numero.Substring(5, 3)}-{numero.Substring(8)}";
+        }
+
+        return numero;
+    }
+
+    private string FormatearDuracion(int segundos)
+    {
+        var duracion = TimeSpan.FromSeconds(segundos);
+        return $"{duracion.Minutes:D2}:{duracion.Seconds:D2}";
+    }
+
+    private (string bgClass, string textClass, string label) ObtenerEstiloEstado(string estado)
+    {
+        return estado.ToLower() switch
+        {
+            "iniciando" => ("bg-blue-100", "text-blue-800", "Iniciando"),
+            "en-curso" => ("bg-yellow-100", "text-yellow-800", "En curso"),
+            "finalizando" => ("bg-blue-100", "text-blue-800", "Finalizando"),
+            "completada" => ("bg-green-100", "text-green-800", "Completada"),
+            "finalizada_usuario" => ("bg-green-100", "text-green-800", "Finalizada por usuario"),
+            "fallida" => ("bg-red-100", "text-red-800", "Fallida"),
+            "cancelada" => ("bg-gray-100", "text-gray-800", "Cancelada"),
+            _ => ("bg-gray-100", "text-gray-800", estado)
+        };
+    }
+
+    private void Regresar()
+    {
+        NavigationManager.NavigateTo("/dashboard");
+    }
+}

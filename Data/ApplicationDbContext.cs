@@ -1,5 +1,6 @@
 ﻿namespace TelefonicaEmpresaria.Data
 {
+    using global::TelefonicaEmpresarial.Services;
     using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
     using Microsoft.EntityFrameworkCore;
     using TelefonicaEmpresaria.Models;
@@ -23,6 +24,7 @@
             public DbSet<EventoWebhook> EventosWebhook { get; set; }
             public DbSet<RequisitosRegulatorios> RequisitosRegulatorios { get; set; }
             public DbSet<DocumentacionUsuario> DocumentacionUsuarios { get; set; }
+            public DbSet<LlamadaSaliente> LlamadasSalientes { get; set; }
 
 
 
@@ -119,7 +121,7 @@
           Descripcion = "Costo mínimo mensual para servicio SMS (MXN)"
       }
   );
-
+                builder.ConfigurarModeloLlamadasSalientes();
 
             }
         }

@@ -5,6 +5,7 @@ using Quartz;
 using System.Threading.RateLimiting;
 using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data;
 using TelefonicaEmpresaria.Models;
+using TelefonicaEmpresaria.Services;
 using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services;
 using TelefonicaEmpresarial.Areas.Identity;
 using TelefonicaEmpresarial.Middleware;
@@ -33,6 +34,19 @@ builder.Services.AddDefaultIdentity<ApplicationUser>(options =>
 })
 .AddRoles<IdentityRole>()
 .AddEntityFrameworkStores<ApplicationDbContext>();
+
+// Configuración de HttpClient
+builder.Services.AddHttpClient("API", client =>
+{
+    // Obtener la URL desde la configuración
+    var appUrl = builder.Configuration["AppUrl"] ??
+                 throw new InvalidOperationException("La URL de la aplicación no está configurada.");
+
+    client.BaseAddress = new Uri(appUrl);
+    client.DefaultRequestHeaders.Add("Accept", "application/json");
+});
+
+
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -102,16 +116,19 @@ builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<ISaldoService, SaldoService>();
 builder.Services.AddScoped<IRequisitosRegulatoriosService, RequisitosRegulatoriosService>();
 builder.Services.AddScoped<IValidationService, ValidationService>();
+builder.Services.AddScoped<ILlamadasService, LlamadasService>();
+
 
 // Configuraci�n de CORS si es necesario
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowWebhooks", policy =>
     {
-        policy.WithOrigins(
-            "https://api.stripe.com",
-            "https://api.twilio.com")
-        .AllowAnyHeader()
+        //policy.WithOrigins(
+        //    "https://api.stripe.com",
+        //    "https://api.twilio.com")
+        policy.AllowAnyOrigin()
+       .AllowAnyHeader()
         .AllowAnyMethod();
     });
 });
@@ -137,6 +154,25 @@ builder.Services.AddQuartz(q =>
         .WithIdentity("RenovacionNumeros-Trigger")
         .WithCronSchedule("0 0 2 * * ?")); // Ejecutar a las 2 AM todos los días
 });
+
+builder.Services.AddQuartz(q =>
+{
+    // Configurar el job
+    var jobKey = new JobKey("LlamadasMonitorJob");
+
+    q.AddJob<LlamadasMonitorJob>(opts => opts.WithIdentity(jobKey));
+
+    // Programar para que se ejecute cada minuto
+    q.AddTrigger(opts => opts
+        .ForJob(jobKey)
+        .WithIdentity("LlamadasMonitorJob-Trigger")
+        .WithSimpleSchedule(x => x
+            .WithIntervalInSeconds(60)
+            .RepeatForever()));
+});
+
+
+
 builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
 // Protecci�n antiforgery y otras medidas de seguridad
 builder.Services.AddAntiforgery(options =>
@@ -164,6 +200,7 @@ app.UseAntiforgery();
 app.UseGlobalExceptionHandler();
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 
 app.UseRateLimiter();
 app.UseRouting();
