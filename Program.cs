@@ -11,14 +11,14 @@ using TelefonicaEmpresarial.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configuración de la conexión a la base de datos
+// Configuraciï¿½n de la conexiï¿½n a la base de datos
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException("No se encontró la cadena de conexión 'DefaultConnection'.");
+    ?? throw new InvalidOperationException("No se encontrï¿½ la cadena de conexiï¿½n 'DefaultConnection'.");
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// Configuración de Identity (autenticación y usuarios)
+// Configuraciï¿½n de Identity (autenticaciï¿½n y usuarios)
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 builder.Services.AddDefaultIdentity<ApplicationUser>(options =>
 {
@@ -32,7 +32,7 @@ builder.Services.AddDefaultIdentity<ApplicationUser>(options =>
 .AddRoles<IdentityRole>()
 .AddEntityFrameworkStores<ApplicationDbContext>();
 
-// Configuración de páginas Razor y Blazor Server
+// Configuraciï¿½n de pï¿½ginas Razor y Blazor Server
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<ApplicationUser>>();
@@ -44,7 +44,7 @@ builder.Services.AddScoped<ISaldoService, SaldoService>();
 builder.Services.AddScoped<IRequisitosRegulatoriosService, RequisitosRegulatoriosService>();
 builder.Services.AddScoped<IValidationService, ValidationService>();
 
-// Configuración de CORS si es necesario
+// Configuraciï¿½n de CORS si es necesario
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowWebhooks", policy =>
@@ -57,7 +57,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Protección antiforgery y otras medidas de seguridad
+// Protecciï¿½n antiforgery y otras medidas de seguridad
 builder.Services.AddAntiforgery();
 
 var app = builder.Build();
@@ -77,7 +77,7 @@ app.UseGlobalExceptionHandler();
 
 app.UseHttpsRedirection();
 
-app.UseStaticFiles(); // Ya debería estar configurado
+app.UseStaticFiles(); // Ya deberï¿½a estar configurado
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(Path.Combine(builder.Environment.WebRootPath, "documentos")),
@@ -96,7 +96,7 @@ Directory.CreateDirectory(Path.Combine(builder.Environment.WebRootPath, "documen
 
 app.UseRouting();
 
-// Uso de CORS antes de la autenticación
+// Uso de CORS antes de la autenticaciï¿½n
 app.UseCors("AllowWebhooks");
 
 app.UseAuthentication();
@@ -127,7 +127,7 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Error al realizar la migración o seed de la base de datos.");
+        logger.LogError(ex, "Error al realizar la migraciï¿½n o seed de la base de datos.");
     }
 }
 

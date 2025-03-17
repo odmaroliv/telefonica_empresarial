@@ -8,140 +8,813 @@
         <div>Redirigiendo al dashboard...</div>
     </Authorized>
     <NotAuthorized>
-        <div class="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 py-12">
-            <div class="container mx-auto px-4">
-                <div class="max-w-7xl mx-auto">
-                    <div class="text-center mb-16">
-                        <h1 class="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
-                            Números Telefónicos Empresariales<br />
-                            <span class="text-blue-600">Para Emprendedores</span>
-                        </h1>
-                        <p class="text-xl text-gray-600 max-w-3xl mx-auto">
-                            Adquiere números telefónicos para tu negocio, configura redirecciones a tu número personal y habilita la recepción de SMS para autenticaciones.
-                        </p>
-                    </div>
-
-                    <div class="flex flex-col md:flex-row gap-8 mb-20">
-                        <div class="bg-white rounded-xl shadow-md p-8 flex-1 transform transition-transform hover:scale-105">
-                            <div class="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center mb-6">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                                </svg>
-                            </div>
-                            <h2 class="text-xl font-semibold mb-4">Números Profesionales</h2>
-                            <p class="text-gray-600">
-                                Consigue un número telefónico profesional para tu negocio sin necesidad de comprar un nuevo dispositivo.
-                            </p>
+        <!-- Hero Section -->
+        <div class="min-h-screen bg-white">
+            <!-- Navbar -->
+            <nav class="bg-white shadow-sm py-4">
+                <div class="container mx-auto px-4">
+                    <div class="flex justify-between items-center">
+                        <div class="flex items-center">
+                            <a href="/" class="text-2xl font-bold text-blue-600">
+                                Número<span class="text-gray-800">Empresarial</span>
+                            </a>
                         </div>
-
-                        <div class="bg-white rounded-xl shadow-md p-8 flex-1 transform transition-transform hover:scale-105">
-                            <div class="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center mb-6">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16l-4-4m0 0l4-4m-4 4h18" />
-                                </svg>
+                        <div class="hidden md:flex items-center space-x-6">
+                            <a href="#funciones" class="text-gray-700 hover:text-blue-600 font-medium">Funciones</a>
+                            <a href="#precios" class="text-gray-700 hover:text-blue-600 font-medium">Precios</a>
+                            <a href="#faq" class="text-gray-700 hover:text-blue-600 font-medium">FAQ</a>
+                            <div class="space-x-3">
+                                <a href="/Identity/Account/Login" class="px-4 py-2 bg-gray-200 text-gray-800 font-medium rounded-lg hover:bg-gray-300 transition-colors">Iniciar Sesión</a>
+                                <a href="/Identity/Account/Register" class="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors">Registrarse</a>
                             </div>
-                            <h2 class="text-xl font-semibold mb-4">Redirección Instantánea</h2>
-                            <p class="text-gray-600">
-                                Recibe llamadas en tu número personal mientras mantienes tu privacidad con clientes y proveedores.
-                            </p>
-                        </div>
-
-                        <div class="bg-white rounded-xl shadow-md p-8 flex-1 transform transition-transform hover:scale-105">
-                            <div class="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center mb-6">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                                </svg>
-                            </div>
-                            <h2 class="text-xl font-semibold mb-4">Recepción de SMS</h2>
-                            <p class="text-gray-600">
-                                Habilita la recepción de SMS para verificaciones y códigos de autenticación de servicios en línea.
-                            </p>
                         </div>
                     </div>
+                </div>
+            </nav>
 
-                    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                        <div class="md:flex">
-                            <div class="md:w-1/2 p-8 md:p-12">
-                                <h2 class="text-3xl font-bold mb-6">Empieza hoy mismo</h2>
-                                <ul class="space-y-4 mb-8">
-                                    <li class="flex items-start">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
-                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                                        </svg>
-                                        <span>Números profesionales para tu negocio</span>
-                                    </li>
-                                    <li class="flex items-start">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
-                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                                        </svg>
-                                        <span>Redirección a tu número personal</span>
-                                    </li>
-                                    <li class="flex items-start">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
-                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                                        </svg>
-                                        <span>Recepción de SMS para autenticaciones</span>
-                                    </li>
-                                    <li class="flex items-start">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
-                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                                        </svg>
-                                        <span>Gestión sencilla desde tu dashboard</span>
-                                    </li>
-                                </ul>
-                                <div class="space-x-4">
-                                    <a href="/Identity/Account/Register" class="inline-block px-5 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors">
-                                        Registrarse
-                                    </a>
-                                    <a href="/Identity/Account/Login" class="inline-block px-5 py-3 bg-gray-200 text-gray-800 font-medium rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors">
-                                        Iniciar Sesión
-                                    </a>
-                                </div>
+            <section class="bg-gradient-to-b from-blue-50 to-blue-100 py-20">
+                <div class="container mx-auto px-4">
+                    <div class="flex flex-col md:flex-row items-center justify-between">
+                        <div class="md:w-1/2 mb-10 md:mb-0">
+                            <h1 class="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
+                                Números Telefónicos Empresariales
+                                <span class="text-blue-600 block mt-2">Para Emprendedores</span>
+                            </h1>
+                            <p class="text-xl text-gray-700 mb-8 max-w-lg">
+                                Adquiere números telefónicos profesionales para tu negocio, con redirección a tu celular y recepción de SMS para verificaciones, todo sin contratos largos.
+                            </p>
+                            <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+                                <a href="/Identity/Account/Register" class="inline-block px-5 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors text-center">Comenzar ahora</a>
+                                <a href="#precios" class="inline-block px-5 py-3 bg-gray-200 text-gray-800 font-medium rounded-lg hover:bg-gray-300 transition-colors text-center">Ver precios</a>
                             </div>
-                            <div class="md:w-1/2 bg-blue-600 text-white p-8 md:p-12">
-                                <div class="h-full flex flex-col justify-center">
-                                    <h3 class="text-2xl font-bold mb-4">Precios transparentes</h3>
-                                    <p class="mb-6">
-                                        Nuestros precios son claros y sin sorpresas. Solo pagas por lo que necesitas.
-                                    </p>
-                                    <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                                        <div class="mb-4">
-                                            <span class="text-2xl font-bold">Desde $149 MXN</span>
-                                            <span class="text-sm opacity-75">/mes</span>
+                            <div class="mt-8 flex items-center text-sm text-gray-600">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                </svg>
+                                <span>Activación inmediata, sin contratos a largo plazo</span>
+                            </div>
+                        </div>
+                        <div class="md:w-1/2">
+                            <div class="bg-white rounded-xl shadow-xl overflow-hidden">
+                                <div class="p-6 border-b border-gray-200">
+                                    <div class="flex items-center">
+                                        <div class="flex-shrink-0">
+                                            <div class="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                                </svg>
+                                            </div>
                                         </div>
-                                        <ul class="space-y-2 mb-4">
-                                            <li class="flex items-center">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                                                </svg>
-                                                Número empresarial
-                                            </li>
-                                            <li class="flex items-center">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                                                </svg>
-                                                Redirección ilimitada
-                                            </li>
-                                            <li class="flex items-center">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                                                </svg>
-                                                Opción de SMS (+$49/mes)
-                                            </li>
-                                        </ul>
-                                        <p class="text-sm opacity-75">
-                                            Sin contratos a largo plazo. Cancela cuando quieras.
-                                        </p>
+                                        <div class="ml-4">
+                                            <h2 class="text-lg font-medium text-gray-900">Número Empresarial</h2>
+                                            <p class="text-gray-600">Llama como profesional, contesta donde quieras</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <ul class="space-y-4">
+                                        <li class="flex">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-3 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                            </svg>
+                                            <div>
+                                                <h3 class="text-gray-900 font-medium">Elige tu número</h3>
+                                                <p class="text-gray-600">Selecciona entre números de México, EE.UU. y otros países</p>
+                                            </div>
+                                        </li>
+                                        <li class="flex">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-3 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                            </svg>
+                                            <div>
+                                                <h3 class="text-gray-900 font-medium">Redirección a tu celular</h3>
+                                                <p class="text-gray-600">Las llamadas se redirigen automáticamente al número que elijas</p>
+                                            </div>
+                                        </li>
+                                        <li class="flex">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-3 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                            </svg>
+                                            <div>
+                                                <h3 class="text-gray-900 font-medium">Recepción de SMS</h3>
+                                                <p class="text-gray-600">Recibe códigos de verificación para WhatsApp Business, Google, etc.</p>
+                                            </div>
+                                        </li>
+                                    </ul>
+                                    <div class="mt-8">
+                                        <a href="/Identity/Account/Register" class="w-full block px-5 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors text-center">
+                                            Comenzar gratis
+                                        </a>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </section>
+
+            <!-- Ventajas Section -->
+            <section class="py-16 bg-white" id="ventajas">
+                <div class="container mx-auto px-4">
+                    <div class="text-center mb-12">
+                        <h2 class="text-3xl font-bold text-gray-900 mb-4">¿Por qué elegir Número Empresarial?</h2>
+                        <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+                            Creamos una solución simple y efectiva para emprendedores y pequeñas empresas, sin las complicaciones de otros servicios.
+                        </p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div class="bg-white rounded-xl shadow-md p-6 transition-all duration-300 hover:shadow-lg transform hover:-translate-y-1">
+                            <div class="h-14 w-14 bg-blue-100 rounded-full flex items-center justify-center mb-6">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                            <h3 class="text-xl font-semibold mb-3 text-gray-900">Paga solo por lo que uses</h3>
+                            <p class="text-gray-600">
+                                Sin cuotas de activación ni cargos ocultos. Solo recargas saldo y pagas por tus números activos y el consumo real.
+                            </p>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-md p-6 transition-all duration-300 hover:shadow-lg transform hover:-translate-y-1">
+                            <div class="h-14 w-14 bg-green-100 rounded-full flex items-center justify-center mb-6">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
+                            </div>
+                            <h3 class="text-xl font-semibold mb-3 text-gray-900">Sin contratos largos</h3>
+                            <p class="text-gray-600">
+                                Activa o cancela números cuando quieras, sin penalizaciones ni permanencias. Tú controlas tus gastos.
+                            </p>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-md p-6 transition-all duration-300 hover:shadow-lg transform hover:-translate-y-1">
+                            <div class="h-14 w-14 bg-purple-100 rounded-full flex items-center justify-center mb-6">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                                </svg>
+                            </div>
+                            <h3 class="text-xl font-semibold mb-3 text-gray-900">Interfaz simple</h3>
+                            <p class="text-gray-600">
+                                Sin complicaciones ni funciones confusas. Una plataforma fácil de usar enfocada en lo esencial para tu negocio.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Features Section -->
+            <section class="py-16 bg-gray-50" id="funciones">
+                <div class="container mx-auto px-4">
+                    <div class="text-center mb-12">
+                        <h2 class="text-3xl font-bold text-gray-900 mb-4">Funcionalidades principales</h2>
+                        <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+                            Todo lo que necesitas para gestionar tus comunicaciones empresariales, sin complicaciones.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+                        <div class="flex flex-col md:flex-row gap-6">
+                            <div class="flex-shrink-0">
+                                <div class="h-16 w-16 bg-blue-100 rounded-lg flex items-center justify-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-semibold mb-2 text-gray-900">Múltiples números profesionales</h3>
+                                <p class="text-gray-600 mb-4">
+                                    Adquiere números de México, Estados Unidos y otros países. Ideal para separar proyectos o crear presencia local.
+                                </p>
+                                <ul class="space-y-2">
+                                    <li class="flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span class="text-gray-700">Sin necesidad de adquirir dispositivos adicionales</span>
+                                    </li>
+                                    <li class="flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span class="text-gray-700">Activación inmediata en la mayoría de países</span>
+                                    </li>
+                                    <li class="flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span class="text-gray-700">Perfectos para WhatsApp Business y otras aplicaciones</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col md:flex-row gap-6">
+                            <div class="flex-shrink-0">
+                                <div class="h-16 w-16 bg-green-100 rounded-lg flex items-center justify-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16l-4-4m0 0l4-4m-4 4h18" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-semibold mb-2 text-gray-900">Redirección instantánea</h3>
+                                <p class="text-gray-600 mb-4">
+                                    Todas las llamadas a tu número empresarial se redirigen automáticamente a tu teléfono personal u oficina.
+                                </p>
+                                <ul class="space-y-2">
+                                    <li class="flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span class="text-gray-700">Cambia el número de destino cuando quieras</span>
+                                    </li>
+                                    <li class="flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span class="text-gray-700">Mantén tu número personal privado</span>
+                                    </li>
+                                    <li class="flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span class="text-gray-700">Redirección</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col md:flex-row gap-6">
+                            <div class="flex-shrink-0">
+                                <div class="h-16 w-16 bg-purple-100 rounded-lg flex items-center justify-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-semibold mb-2 text-gray-900">Recepción de SMS</h3>
+                                <p class="text-gray-600 mb-4">
+                                    Recibe SMS de verificación y autenticación de diferentes servicios directamente en tu dashboard.
+                                </p>
+                                <ul class="space-y-2">
+                                    <li class="flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span class="text-gray-700">Verificación para WhatsApp Business, Facebook, Google</span>
+                                    </li>
+                                    <li class="flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span class="text-gray-700">Códigos OTP para autenticación en servicios</span>
+                                    </li>
+                                    <li class="flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span class="text-gray-700">Almacenamiento y consulta de mensajes</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col md:flex-row gap-6">
+                            <div class="flex-shrink-0">
+                                <div class="h-16 w-16 bg-yellow-100 rounded-lg flex items-center justify-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-semibold mb-2 text-gray-900">Control total desde tu dashboard</h3>
+                                <p class="text-gray-600 mb-4">
+                                    Gestiona tus números, saldo y configuraciones desde una interfaz simple e intuitiva.
+                                </p>
+                                <ul class="space-y-2">
+                                    <li class="flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span class="text-gray-700">Historial detallado de llamadas y mensajes</span>
+                                    </li>
+                                    <li class="flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span class="text-gray-700">Recargas de saldo simples y seguras</span>
+                                    </li>
+                                    <li class="flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span class="text-gray-700">Activación y cancelación sin complicaciones</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Pricing Section -->
+            <section class="py-16 bg-white" id="precios">
+                <div class="container mx-auto px-4">
+                    <div class="text-center mb-12">
+                        <h2 class="text-3xl font-bold text-gray-900 mb-4">Precios transparentes</h2>
+                        <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+                            Pagas solo por lo que necesitas, sin sorpresas ni contratos largos.
+                        </p>
+                    </div>
+
+                    <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all duration-300">
+                            <div class="p-6 border-b border-gray-100">
+                                <h3 class="text-xl font-semibold mb-1 text-gray-900">Número Mexicano</h3>
+                                <div class="flex items-baseline">
+                                    <span class="text-3xl font-bold text-gray-900">$100-149</span>
+                                    <span class="ml-1 text-gray-600">/mes</span>
+                                </div>
+                                <p class="text-gray-600 mt-4">
+                                    Número telefónico con prefijo +52
+                                </p>
+                            </div>
+                            <div class="p-6">
+                                <ul class="space-y-3">
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-gray-700">Redirección</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-gray-700">Historial de llamadas</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-gray-700">Compatible con WhatsApp</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-gray-700">
+                                            SMS opcional <span class="text-sm text-gray-500">(+$25-49/mes)</span>
+                                        </span>
+                                    </li>
+                                </ul>
+                                <div class="mt-6">
+                                    <a href="/Identity/Account/Register" class="block text-center px-5 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                                        Elegir plan
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden border-2 border-blue-500 transform scale-105 relative">
+                            <div class="absolute top-0 right-0">
+                                <div class="bg-blue-600 text-white text-xs px-3 py-1 font-semibold rounded-bl-lg">
+                                    Popular
+                                </div>
+                            </div>
+                            <div class="p-6 border-b border-gray-100 bg-blue-50">
+                                <h3 class="text-xl font-semibold mb-1 text-gray-900">Número EE.UU.</h3>
+                                <div class="flex items-baseline">
+                                    <span class="text-3xl font-bold text-gray-900">$100-120</span>
+                                    <span class="ml-1 text-gray-600">/mes</span>
+                                </div>
+                                <p class="text-gray-600 mt-4">
+                                    Número telefónico con prefijo +1
+                                </p>
+                            </div>
+                            <div class="p-6">
+                                <ul class="space-y-3">
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-gray-700">Redirección</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-gray-700">Historial de llamadas</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-gray-700">Compatible con WhatsApp</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-gray-700">
+                                            SMS opcional <span class="text-sm text-gray-500">(+$25-49/mes)</span>
+                                        </span>
+                                    </li>
+                                </ul>
+                                <div class="mt-6">
+                                    <a href="/Identity/Account/Register" class="block text-center px-5 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                                        Elegir plan
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all duration-300">
+                            <div class="p-6 border-b border-gray-100">
+                                <h3 class="text-xl font-semibold mb-1 text-gray-900">Otros países</h3>
+                                <div class="flex items-baseline">
+                                    <span class="text-3xl font-bold text-gray-900">$120-200</span>
+                                    <span class="ml-1 text-gray-600">/mes</span>
+                                </div>
+                                <p class="text-gray-600 mt-4">
+                                    Números de España, Colombia, etc.
+                                </p>
+                            </div>
+                            <div class="p-6">
+                                <ul class="space-y-3">
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-gray-700">Redirección</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-gray-700">Historial de llamadas</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-gray-700">Compatible con WhatsApp</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-gray-700">
+                                            SMS opcional <span class="text-sm text-gray-500">(+$25-49/mes)</span>
+                                        </span>
+                                    </li>
+                                </ul>
+                                <div class="mt-6">
+                                    <a href="/Identity/Account/Register" class="block text-center px-5 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                                        Elegir plan
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Costos Adicionales -->
+                    <div class="mt-16 max-w-4xl mx-auto">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-6 text-center">Información adicional de costos</h3>
+                        
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Concepto</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Detalles</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Costo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        <tr>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Llamadas entrantes</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Costo por minuto según origen</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$5-10 MXN/min</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">SMS de autenticación</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">SMS para códigos OTP y verificaciones</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$8 MXN/mensaje</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">SMS regulares</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Mensajes de texto estándar</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$2 MXN/mensaje</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Renovación mensual</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Cargo automático desde tu saldo</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Según tu plan</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- Ejemplo de costos -->
+                        <div class="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
+                            <div class="flex">
+                                <div class="flex-shrink-0">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                </div>
+                                <div class="ml-3">
+                                    <h3 class="text-lg font-medium text-gray-900">Ejemplo de uso: Verificación de servicios</h3>
+                                    <p class="mt-1 text-sm text-gray-600">
+                                        Emprendedor que necesita un número de EE.UU. para verificar WhatsApp Business y Google My Business:
+                                    </p>
+                                    <ul class="mt-3 space-y-1 text-sm">
+                                        <li class="flex justify-between">
+                                            <span>Número de EE.UU. (renta mensual):</span>
+                                            <span class="font-medium">$120 MXN</span>
+                                        </li>
+                                        <li class="flex justify-between">
+                                            <span>Servicio SMS (para verificación de WhatsApp):</span>
+                                            <span class="font-medium">$49 MXN</span>
+                                        </li>
+                                        <li class="flex justify-between">
+                                            <span>SMS de verificación (1 para WhatsApp):</span>
+                                            <span class="font-medium">$8 MXN</span>
+                                        </li>
+                                        <li class="flex justify-between">
+                                            <span>Llamadas de verificación (5 min para Google):</span>
+                                            <span class="font-medium">$35 MXN</span>
+                                        </li>
+                                        <li class="flex justify-between border-t pt-1 mt-1">
+                                            <span class="font-medium">Costo mensual total:</span>
+                                            <span class="font-bold">$212 MXN</span>
+                                        </li>
+                                    </ul>
+                                    <p class="mt-4 text-xs text-gray-500">
+                                        * Después de la verificación inicial de WhatsApp y Google, puedes desactivar el servicio SMS si no lo necesitas para otros servicios, reduciendo el costo mensual a solo $120 MXN por mantener el número activo.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+</div>
+                    <div class="mt-10 text-center">
+                        <a href="/Identity/Account/Register" class="inline-block px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                            Comenzar ahora
+                        </a>
+                        <p class="mt-2 text-sm text-gray-500">
+                            Sin contratos a largo plazo. Cancela cuando quieras.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+
+
+            <!-- Comparativa Section -->
+            <section class="py-16 bg-gray-50">
+                <div class="container mx-auto px-4">
+                    <div class="text-center mb-12">
+                        <h2 class="text-3xl font-bold text-gray-900 mb-4">¿Por qué somos mejor opción que otros servicios?</h2>
+                        <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+                            Comparamos nuestro servicio con otras alternativas populares para que puedas tomar la mejor decisión.
+                        </p>
+                    </div>
+
+                    <div class="max-w-5xl mx-auto">
+                        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Característica</th>
+                                            <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                <span class="text-blue-600">Número Empresarial</span>
+                                            </th>
+                                            <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Zadarma</th>
+                                            <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Otros servicios VoIP</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        <tr>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Modelo de precios</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                                                <span class="font-medium text-blue-600">Sistema de saldo prepago</span>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">Suscripción con extras costosos</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">Contratos a largo plazo</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Facilidad de uso</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                                    Muy sencillo
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                                    Complejo
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                                    Muy complejo
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Configuración</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                                                <span class="font-medium text-blue-600">Minutos</span>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">Horas</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">Días + soporte técnico</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Compatibilidad WhatsApp</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                                    Perfecta
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                                    Variable
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                                    Problemática
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- FAQ Section -->
+            <section class="py-16 bg-white" id="faq">
+                <div class="container mx-auto px-4">
+                    <div class="text-center mb-12">
+                        <h2 class="text-3xl font-bold text-gray-900 mb-4">Preguntas frecuentes</h2>
+                        <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+                            Respuestas a las dudas más comunes sobre nuestro servicio.
+                        </p>
+                    </div>
+
+                    <div class="max-w-3xl mx-auto space-y-6">
+                        <div class="bg-gray-50 rounded-lg p-6">
+                            <h3 class="text-lg font-medium text-gray-900 mb-2">¿Cómo funciona el sistema de saldo?</h3>
+                            <p class="text-gray-700">
+                                Recargas tu cuenta con el monto que desees. Los costos mensuales de tus números y el consumo por llamadas y SMS se descuentan automáticamente de tu saldo. Recibes notificaciones cuando tu saldo está bajo y puedes recargarlo en cualquier momento.
+                            </p>
+                        </div>
+
+                        <div class="bg-gray-50 rounded-lg p-6">
+                            <h3 class="text-lg font-medium text-gray-900 mb-2">¿Puedo usar mi número para WhatsApp Business?</h3>
+                            <p class="text-gray-700">
+                                ¡Sí! Nuestros números son compatibles con WhatsApp Business. Necesitarás activar la opción de SMS para recibir el código de verificación. Una vez configurado, podrás gestionar WhatsApp Business desde tu dispositivo habitual.
+                            </p>
+                        </div>
+
+                        <div class="bg-gray-50 rounded-lg p-6">
+                            <h3 class="text-lg font-medium text-gray-900 mb-2">¿Cuánto cuesta recibir llamadas?</h3>
+                            <p class="text-gray-700">
+                                El costo de las llamadas varía según el país de origen, oscilando entre $5-10 MXN por minuto. Este costo se descuenta de tu saldo. Puedes ver el historial detallado de llamadas y costos en tu dashboard.
+                            </p>
+                        </div>
+
+                        <div class="bg-gray-50 rounded-lg p-6">
+                            <h3 class="text-lg font-medium text-gray-900 mb-2">¿Hay permanencia mínima o contratos?</h3>
+                            <p class="text-gray-700">
+                                No hay contratos ni permanencia mínima. Puedes cancelar tus números en cualquier momento sin penalizaciones. Solo pagas mientras mantengas activos tus números y según tu consumo real.
+                            </p>
+                        </div>
+
+                        <div class="bg-gray-50 rounded-lg p-6">
+                            <h3 class="text-lg font-medium text-gray-900 mb-2">¿Qué pasa si mi saldo se agota?</h3>
+                            <p class="text-gray-700">
+                                Si tu saldo se agota, tus números permanecerán activos durante dos días adicionales con funcionalidad limitada. Recibirás notificaciones para recargar tu saldo. Si no recargas en ese período, tus números se desactivarán hasta que realices una recarga.
+                            </p>
+                        </div>
+
+                        <div class="bg-gray-50 rounded-lg p-6">
+                            <h3 class="text-lg font-medium text-gray-900 mb-2">¿En qué países están disponibles los números?</h3>
+                            <p class="text-gray-700">
+                                Ofrecemos números telefónicos en México, Estados Unidos, Canadá, España, Reino Unido, Colombia, Argentina, Chile, Perú, Brasil y otros países. Cada país tiene requisitos regulatorios diferentes que podemos ayudarte a cumplir.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="mt-12 text-center">
+                        <p class="text-gray-600 mb-4">¿Tienes más preguntas?</p>
+                        <a href="/soporte" class="inline-block px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                            Contáctanos
+                        </a>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CTA Section -->
+            <section class="py-16 bg-blue-600">
+                <div class="container mx-auto px-4">
+                    <div class="max-w-3xl mx-auto text-center">
+                        <h2 class="text-3xl font-bold text-white mb-6">
+                            Comienza a profesionalizar tus comunicaciones hoy mismo
+                        </h2>
+                        <p class="text-xl text-blue-100 mb-8">
+                            Activa tu primer número empresarial en minutos y mejora la imagen de tu negocio
+                        </p>
+                        <div class="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
+                            <a href="/Identity/Account/Register" class="px-8 py-4 bg-white text-blue-600 font-bold rounded-lg hover:bg-blue-50 transition-colors">
+                                Crear cuenta gratis
+                            </a>
+                            <a href="#precios" class="px-8 py-4 bg-blue-700 text-white font-bold rounded-lg hover:bg-blue-800 transition-colors">
+                                Ver planes
+                            </a>
+                        </div>
+                        <p class="mt-6 text-blue-200 text-sm">
+                            No se requiere tarjeta de crédito para registrarte. Comienza gratis y recarga cuando estés listo.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Footer -->
+            <footer class="bg-gray-900 text-white py-12">
+                <div class="container mx-auto px-4">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                        <div>
+                            <h3 class="text-lg font-semibold mb-4">Número Empresarial</h3>
+                            <p class="text-gray-400 mb-4">
+                                Soluciones de telefonía sencillas para emprendedores y pequeñas empresas.
+                            </p>
+                            <div class="flex space-x-4">
+                                <a href="#" class="text-gray-400 hover:text-white">
+                                    <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                                    </svg>
+                                </a>
+                                <a href="#" class="text-gray-400 hover:text-white">
+                                    <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723 10.029 10.029 0 01-3.127 1.195 4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.937 4.937 0 004.604 3.417 9.868 9.868 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.054 0 13.999-7.496 13.999-13.986 0-.209 0-.42-.015-.63a9.936 9.936 0 002.46-2.548l-.047-.02z" />
+                                    </svg>
+                                </a>
+                                <a href="#" class="text-gray-400 hover:text-white">
+                                    <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M12 0C8.74 0 8.333.015 7.053.072 5.775.132 4.905.333 4.14.63c-.789.306-1.459.717-2.126 1.384S.935 3.35.63 4.14C.333 4.905.131 5.775.072 7.053.012 8.333 0 8.74 0 12s.015 3.667.072 4.947c.06 1.277.261 2.148.558 2.913.306.788.717 1.459 1.384 2.126.667.666 1.336 1.079 2.126 1.384.766.296 1.636.499 2.913.558C8.333 23.988 8.74 24 12 24s3.667-.015 4.947-.072c1.277-.06 2.148-.262 2.913-.558.788-.306 1.459-.718 2.126-1.384.666-.667 1.079-1.335 1.384-2.126.296-.765.499-1.636.558-2.913.06-1.28.072-1.687.072-4.947s-.015-3.667-.072-4.947c-.06-1.277-.262-2.149-.558-2.913-.306-.789-.718-1.459-1.384-2.126C21.319 1.347 20.651.935 19.86.63c-.765-.297-1.636-.499-2.913-.558C15.667.012 15.26 0 12 0zm0 2.16c3.203 0 3.585.016 4.85.071 1.17.055 1.805.249 2.227.415.562.217.96.477 1.382.896.419.42.679.819.896 1.381.164.422.36 1.057.413 2.227.057 1.266.07 1.646.07 4.85s-.015 3.585-.074 4.85c-.061 1.17-.256 1.805-.421 2.227-.224.562-.479.96-.899 1.382-.419.419-.824.679-1.38.896-.42.164-1.065.36-2.235.413-1.274.057-1.649.07-4.859.07-3.211 0-3.586-.015-4.859-.074-1.171-.061-1.816-.256-2.236-.421-.569-.224-.96-.479-1.379-.899-.421-.419-.69-.824-.9-1.38-.165-.42-.359-1.065-.42-2.235-.045-1.26-.061-1.649-.061-4.844 0-3.196.016-3.586.061-4.861.061-1.17.255-1.814.42-2.234.21-.57.479-.96.9-1.381.419-.419.81-.689 1.379-.898.42-.166 1.051-.361 2.221-.421 1.275-.045 1.65-.06 4.859-.06l.045.03zm0 3.678c-3.405 0-6.162 2.76-6.162 6.162 0 3.405 2.76 6.162 6.162 6.162 3.405 0 6.162-2.76 6.162-6.162 0-3.405-2.76-6.162-6.162-6.162zM12 16c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm7.846-10.405c0 .795-.646 1.44-1.44 1.44-.795 0-1.44-.646-1.44-1.44 0-.794.646-1.439 1.44-1.439.793-.001 1.44.645 1.44 1.439z" />
+                                    </svg>
+                                </a>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold mb-4">Enlaces rápidos</h3>
+                            <ul class="space-y-2">
+                                <li><a href="#funciones" class="text-gray-400 hover:text-white">Funciones</a></li>
+                                <li><a href="#precios" class="text-gray-400 hover:text-white">Precios</a></li>
+                                <li><a href="#faq" class="text-gray-400 hover:text-white">Preguntas frecuentes</a></li>
+                                <li><a href="/soporte" class="text-gray-400 hover:text-white">Soporte</a></li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold mb-4">Legal</h3>
+                            <ul class="space-y-2">
+                                <li><a href="/terminos" class="text-gray-400 hover:text-white">Términos y condiciones</a></li>
+                                <li><a href="/privacidad" class="text-gray-400 hover:text-white">Política de privacidad</a></li>
+                                <li><a href="/cookies" class="text-gray-400 hover:text-white">Política de cookies</a></li>
+                                <li><a href="/regulatorio" class="text-gray-400 hover:text-white">Cumplimiento regulatorio</a></li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold mb-4">Contacto</h3>
+                            <p class="text-gray-400 mb-2">¿Tienes dudas o necesitas ayuda?</p>
+                            <a href="mailto:info@numeroempresarial.com" class="text-blue-400 hover:text-blue-300">info@numeroempresarial.com</a>
+                            <p class="text-gray-400 mt-4">
+                                Av. Insurgentes Sur 1602<br>
+                                Ciudad de México, México
+                            </p>
+                        </div>
+                    </div>
+                    <div class="mt-12 pt-8 border-t border-gray-800 text-center">
+                        <p class="text-gray-500">
+                            &copy; @DateTime.Now.Year Número Empresarial. Todos los derechos reservados.
+                        </p>
+                    </div>
+                </div>
+            </footer>
         </div>
     </NotAuthorized>
 </AuthorizeView>
+
 @code {
     protected override async Task OnInitializedAsync()
     {
@@ -152,5 +825,11 @@
         {
             NavigationManager.NavigateTo("/dashboard");
         }
+    }
+
+    // Método para animación de scroll suave - puede requerirse JS para esto
+    private async Task ScrollToSection(string sectionId)
+    {
+        await Task.Delay(1); // Placeholder para futura implementación con JSRuntime
     }
 }
