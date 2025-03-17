@@ -12,6 +12,7 @@
 @attribute [Authorize]
 @inject UserManager<ApplicationUser> UserManager
 @inject ITelefonicaService TelefonicaService
+@inject IStripeService StripeService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
 @inject ILogger<Comprar> Logger
@@ -436,6 +437,8 @@
         }
     }
 
+    // Actualiza el método ComprarNumero en Comprar.razor
+
     private async Task ComprarNumero()
     {
         if (user == null || numeroSeleccionado == null)
@@ -464,38 +467,45 @@
         {
             Logger.LogInformation($"Iniciando compra de número {numeroSeleccionado.Number} para usuario {user.Id}");
 
-            // Calcular costo total
-            decimal costoTotal = costoNumero;
-            if (habilitarSMS)
-            {
-                costoTotal += costoSMS;
-            }
-
-            // Verificar si el usuario tiene saldo suficiente
-            if (saldoUsuario < costoTotal)
-            {
-                await JSRuntime.InvokeVoidAsync("alert", $"Saldo insuficiente. Necesitas ${costoTotal}. Por favor, recarga tu saldo.");
-                NavigationManager.NavigateTo("/saldo");
-                return;
-            }
-
-            var (numero, error) = await TelefonicaService.ComprarNumero(
+            // Usando el nuevo método IniciarCompraNumero que prepara la compra pero no la completa
+            var (numeroId, stripeSessionId, error) = await TelefonicaService.IniciarCompraNumero(
                 user,
                 numeroSeleccionado.Number,
                 numeroRedireccion,
                 habilitarSMS);
 
-            if (numero != null)
+            if (!string.IsNullOrEmpty(error))
             {
-                Logger.LogInformation($"Número registrado correctamente. ID: {numero.Id}");
+                Logger.LogError($"Error al iniciar compra: {error}");
+                await JSRuntime.InvokeVoidAsync("alert", $"Error: {error}");
+                return;
+            }
 
-                // Redirigir al dashboard
-                NavigationManager.NavigateTo("/dashboard", forceLoad: true);
+            if (numeroId.HasValue && !string.IsNullOrEmpty(stripeSessionId))
+            {
+                Logger.LogInformation($"Compra iniciada correctamente. NumeroId: {numeroId}, SessionId: {stripeSessionId}");
+
+                // Guardar el ID del número en la sesión para recuperarlo en la página de éxito
+                await SessionStorage.SetAsync("NumeroId", numeroId.Value);
+
+                // AQUÍ ESTÁ EL CAMBIO: Usa la instancia inyectada de StripeService
+                string? checkoutUrl = await StripeService.ObtenerURLPago(stripeSessionId);
+
+                if (!string.IsNullOrEmpty(checkoutUrl))
+                {
+                    NavigationManager.NavigateTo(checkoutUrl);
+                    return;
+                }
+                else
+                {
+                    Logger.LogError($"No se pudo obtener URL de checkout para sesión {stripeSessionId}");
+                    await JSRuntime.InvokeVoidAsync("alert", "Error al obtener la página de pago. Intenta nuevamente.");
+                }
             }
             else
             {
-                Logger.LogError($"Error al comprar número: {error}");
-                await JSRuntime.InvokeVoidAsync("alert", $"Error al comprar el número: {error}");
+                Logger.LogError("No se recibió ID de número o sesión válidos");
+                await JSRuntime.InvokeVoidAsync("alert", "Error al procesar la compra. Intenta nuevamente.");
             }
         }
         catch (Exception ex)
@@ -508,6 +518,7 @@
             cargandoCompra = false;
         }
     }
+
 
 
     private void Regresar()

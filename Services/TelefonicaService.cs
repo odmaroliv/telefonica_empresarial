@@ -9,6 +9,24 @@ namespace TelefonicaEmpresarial.Services
 {
     public interface ITelefonicaService
     {
+
+
+        // Nuevos métodos para procesamiento vía webhook (sin duplicar ObtenerNumeroDetalle)
+        Task<(int? NumeroId, string? StripeSessionId, string Error)> IniciarCompraNumero(
+            ApplicationUser usuario,
+            string numero,
+            string numeroRedireccion,
+            bool habilitarSMS);
+
+        Task<bool> ProcesarCompraNumero(
+            ApplicationUser usuario,
+            string numeroTelefono,
+            string? numeroRedireccion,
+            bool habilitarSMS,
+            string sessionId,
+            string? subscriptionId);
+
+        Task<Transaccion?> ObtenerTransaccionPorSesion(string sessionId);
         Task<List<TwilioNumeroDisponible>> ObtenerNumerosDisponibles(string pais = "MX", int limite = 10);
         Task<(NumeroTelefonico? Numero, string Error)> ComprarNumero(ApplicationUser usuario, string numero, string numeroRedireccion, bool habilitarSMS);
         Task<bool> ActualizarRedireccion(int numeroId, string nuevoNumeroRedireccion);
@@ -637,6 +655,295 @@ namespace TelefonicaEmpresarial.Services
             }
         }
 
+        // Corrige el error de las variables duplicadas costoNumero y costoSMS
+        // En el método ProcesarCompraNumero:
 
+        public async Task<bool> ProcesarCompraNumero(
+            ApplicationUser usuario,
+            string numeroTelefono,
+            string? numeroRedireccion,
+            bool habilitarSMS,
+            string sessionId,
+            string? subscriptionId)
+        {
+            try
+            {
+                _logger.LogInformation($"Procesando compra de número {numeroTelefono} por webhook para usuario {usuario.Id}");
+
+                // Verificar si ya hay una transacción para esta sesión de Stripe
+                var transaccion = await ObtenerTransaccionPorSesion(sessionId);
+
+                // Si la transacción ya existe y está completada, evitar reprocesamiento
+                if (transaccion != null && transaccion.Status == "Completado")
+                {
+                    _logger.LogInformation($"La sesión {sessionId} ya fue procesada anteriormente");
+                    return true;
+                }
+
+                // Determinar si necesitamos crear un nuevo registro o actualizar uno existente
+                NumeroTelefonico? numeroTelefonico;
+
+                if (transaccion != null && transaccion.NumeroTelefonicoId.HasValue)
+                {
+                    // Actualizar número existente
+                    numeroTelefonico = await _context.NumerosTelefonicos.FindAsync(transaccion.NumeroTelefonicoId.Value);
+
+                    if (numeroTelefonico == null)
+                    {
+                        _logger.LogError($"No se encontró el número con ID {transaccion.NumeroTelefonicoId} para la transacción {sessionId}");
+                        return false;
+                    }
+                }
+                else
+                {
+                    // Crear nuevo registro de número
+                    numeroTelefonico = new NumeroTelefonico
+                    {
+                        Numero = numeroTelefono,
+                        UserId = usuario.Id,
+                        NumeroRedireccion = numeroRedireccion ?? "pendiente",
+                        FechaCompra = DateTime.UtcNow,
+                        FechaExpiracion = DateTime.UtcNow.AddMonths(1),
+                        Activo = false,
+                        SMSHabilitado = habilitarSMS,
+                        PlivoUuid = "pendiente" // Valor inicial hasta adquirir el número
+                    };
+
+                    _context.NumerosTelefonicos.Add(numeroTelefonico);
+                    await _context.SaveChangesAsync(); // Guardar para obtener ID
+
+                    // Si no existía transacción, crearla
+                    if (transaccion == null)
+                    {
+                        // AQUÍ ESTÁ EL CAMBIO: Usar nombres diferentes para las variables locales
+                        var costos = await ObtenerCostos(numeroTelefono);
+                        decimal costoNumeroFinal = costos.CostoNumero;
+                        decimal costoSMSFinal = costos.CostoSMS;
+
+                        transaccion = new Transaccion
+                        {
+                            UserId = usuario.Id,
+                            NumeroTelefonicoId = numeroTelefonico.Id,
+                            Fecha = DateTime.UtcNow,
+                            Monto = habilitarSMS ? costoNumeroFinal + costoSMSFinal : costoNumeroFinal,
+                            Concepto = $"Compra de número {numeroTelefono}" + (habilitarSMS ? " con SMS" : ""),
+                            StripePaymentId = sessionId,
+                            Status = "Pendiente"
+                        };
+
+                        _context.Transacciones.Add(transaccion);
+                        await _context.SaveChangesAsync();
+                    }
+                }
+
+                // Adquirir el número en Twilio
+                var twilioNumero = await _twilioService.ComprarNumero(numeroTelefono);
+
+                if (twilioNumero == null)
+                {
+                    _logger.LogError($"Error al comprar número en Twilio: {numeroTelefono}");
+                    transaccion.Status = "Fallido";
+                    transaccion.DetalleError = "Error al adquirir el número en Twilio";
+                    await _context.SaveChangesAsync();
+                    return false;
+                }
+
+                // Actualizar datos del número
+                numeroTelefonico.PlivoUuid = twilioNumero.Sid;
+                numeroTelefonico.StripeSubscriptionId = subscriptionId;
+                numeroTelefonico.Activo = true;
+
+                // Calcular y actualizar costos - AQUÍ ESTÁ EL CAMBIO: Usar nombres diferentes
+                var costosActualizados = await ObtenerCostos(numeroTelefono);
+                numeroTelefonico.CostoMensual = costosActualizados.CostoNumero;
+                if (habilitarSMS)
+                {
+                    numeroTelefonico.CostoSMS = costosActualizados.CostoSMS;
+                }
+
+                // Configurar redirección si tenemos número de destino
+                if (!string.IsNullOrEmpty(numeroRedireccion) && numeroRedireccion != "pendiente")
+                {
+                    var redirConfigured = await _twilioService.ConfigurarRedireccion(twilioNumero.Sid, numeroRedireccion);
+                    if (!redirConfigured)
+                    {
+                        _logger.LogWarning($"Error al configurar redirección para {twilioNumero.Sid} a {numeroRedireccion}");
+                        // Continuamos a pesar del error
+                    }
+                }
+
+                // Configurar SMS si está habilitado
+                if (habilitarSMS)
+                {
+                    await _twilioService.ActivarSMS(twilioNumero.Sid);
+                }
+
+                // Actualizar transacción
+                transaccion.Status = "Completado";
+                // Si la clase Transaccion tiene FechaCompletado, descomenta esta línea:
+                // transaccion.FechaCompletado = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation($"Número {numeroTelefono} procesado correctamente por webhook. ID: {numeroTelefonico.Id}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al procesar compra de número por webhook: {ex.Message}");
+                return false;
+            }
+        }
+
+
+        public async Task<(int? NumeroId, string? StripeSessionId, string Error)> IniciarCompraNumero(
+            ApplicationUser usuario,
+            string numero,
+            string numeroRedireccion,
+            bool habilitarSMS)
+        {
+            try
+            {
+                _logger.LogInformation($"Iniciando proceso de compra del número {numero} para usuario {usuario.Id}");
+
+                // Calcular costos
+                var (costoNumero, costoSMS) = await ObtenerCostos(numero);
+                decimal costoTotal = habilitarSMS ? costoNumero + costoSMS : costoNumero;
+
+                // Crear un registro preliminar del número (estado pendiente)
+                var fechaActual = DateTime.UtcNow;
+                var nuevoNumero = new NumeroTelefonico
+                {
+                    Numero = numero,
+                    PlivoUuid = "pendiente", // Se actualizará cuando se complete la compra
+                    UserId = usuario.Id,
+                    NumeroRedireccion = numeroRedireccion,
+                    FechaCompra = fechaActual,
+                    FechaExpiracion = fechaActual.AddMonths(1),
+                    CostoMensual = costoNumero,
+                    Activo = false, // Inactivo hasta que se complete el pago
+                    SMSHabilitado = habilitarSMS,
+                    CostoSMS = habilitarSMS ? costoSMS : null
+                };
+
+                await _retryPolicy.ExecuteAsync(async () =>
+                {
+                    _context.NumerosTelefonicos.Add(nuevoNumero);
+                    await _context.SaveChangesAsync();
+                });
+
+                _logger.LogInformation($"Registro preliminar creado con ID {nuevoNumero.Id}");
+
+                // Crear transacción pendiente
+                var transaccion = new Transaccion
+                {
+                    UserId = usuario.Id,
+                    NumeroTelefonicoId = nuevoNumero.Id,
+                    Fecha = fechaActual,
+                    Monto = costoTotal,
+                    Concepto = $"Compra de número {numero}" + (habilitarSMS ? " con SMS" : ""),
+                    Status = "Pendiente"
+                };
+
+                await _retryPolicy.ExecuteAsync(async () =>
+                {
+                    _context.Transacciones.Add(transaccion);
+                    await _context.SaveChangesAsync();
+                });
+
+                // Crear sesión de checkout en Stripe
+                var stripeSession = await _stripeService.CrearSesionCompra(
+                    usuario.StripeCustomerId,
+                    numero,
+                    costoNumero,
+                    habilitarSMS ? costoSMS : null);
+
+                if (string.IsNullOrEmpty(stripeSession.SessionId))
+                {
+                    _logger.LogError($"Error al crear sesión de Stripe para número {numero}");
+                    return (nuevoNumero.Id, null, "Error al crear sesión de pago");
+                }
+
+                // Actualizar la transacción con el ID de sesión
+                transaccion.StripePaymentId = stripeSession.SessionId;
+                await _retryPolicy.ExecuteAsync(async () =>
+                {
+                    await _context.SaveChangesAsync();
+                });
+
+                _logger.LogInformation($"Sesión de pago creada: {stripeSession.SessionId} para número {nuevoNumero.Id}");
+                return (nuevoNumero.Id, stripeSession.SessionId, string.Empty);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error en inicio de compra: {ex.Message}");
+                return (null, null, $"Error al iniciar compra: {ex.Message}");
+            }
+        }
+
+        // 4. Implementar método simplificado para obtener transacción por sesión
+        public async Task<Transaccion?> ObtenerTransaccionPorSesion(string sessionId)
+        {
+            try
+            {
+                return await _retryPolicy.ExecuteAsync(async () =>
+                    await _context.Transacciones
+                        .Include(t => t.NumeroTelefonico)
+                        .FirstOrDefaultAsync(t => t.StripePaymentId == sessionId)
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al obtener transacción para sesión {sessionId}");
+                return null;
+            }
+        }
+
+        // 5. Implementar método para configurar un número después de adquirido (más simple)
+        public async Task<bool> ConfigurarNumeroAdquirido(int numeroId, string? numeroRedireccion = null)
+        {
+            try
+            {
+                var numero = await _context.NumerosTelefonicos.FindAsync(numeroId);
+
+                if (numero == null)
+                {
+                    _logger.LogWarning($"No se encontró el número con ID {numeroId} para configurar");
+                    return false;
+                }
+
+                // Si tenemos número de redirección nuevo, actualizarlo
+                if (!string.IsNullOrEmpty(numeroRedireccion) && numeroRedireccion != "pendiente")
+                {
+                    numero.NumeroRedireccion = numeroRedireccion;
+
+                    // Configurar redirección en Twilio
+                    if (!string.IsNullOrEmpty(numero.PlivoUuid) && numero.PlivoUuid != "pendiente")
+                    {
+                        await _twilioService.ConfigurarRedireccion(numero.PlivoUuid, numeroRedireccion);
+                    }
+                }
+
+                // Asegurarnos que el número esté activado
+                if (!numero.Activo && !string.IsNullOrEmpty(numero.PlivoUuid) && numero.PlivoUuid != "pendiente")
+                {
+                    numero.Activo = true;
+
+                    // Configurar SMS si está habilitado
+                    if (numero.SMSHabilitado)
+                    {
+                        await _twilioService.ActivarSMS(numero.PlivoUuid);
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al configurar número adquirido ID {numeroId}");
+                return false;
+            }
+        }
     }
 }

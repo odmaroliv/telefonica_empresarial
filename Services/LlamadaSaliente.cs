@@ -18,6 +18,7 @@ namespace TelefonicaEmpresaria.Services
     /// </summary>
     public interface ILlamadasService
     {
+        Task VerificarSaldoLlamadasActivas();
         Task FinalizarLlamadasAbandonadas();
         Task ProcesarFinalizacionLlamada(string twilioCallSid, int? duracion);
         Task ActualizarHeartbeat(int llamadaId, string userId);
@@ -825,6 +826,52 @@ namespace TelefonicaEmpresaria.Services
             }
 
             return "default";
+        }
+        // Agregar a LlamadasMonitorJob o crear un nuevo job
+        public async Task VerificarSaldoLlamadasActivas()
+        {
+            try
+            {
+                // Obtener todas las llamadas en curso
+                var llamadasActivas = await _context.LlamadasSalientes
+                    .Where(l => l.Estado == "en-curso")
+                    .ToListAsync();
+
+                foreach (var llamada in llamadasActivas)
+                {
+                    // Calcular duración actual
+                    TimeSpan duracionActual = DateTime.UtcNow - llamada.FechaInicio;
+                    int segundos = (int)duracionActual.TotalSeconds;
+
+                    // Calcular el costo de la llamada
+                    string paisDestino = ObtenerPaisDesdeNumero(llamada.NumeroDestino);
+                    decimal costoLlamada = await CalcularCostoLlamadaReal(paisDestino, llamada.Duracion.Value);
+
+                    // Verificar saldo disponible
+                    var saldo = await _context.SaldosCuenta
+                        .Where(s => s.UserId == llamada.UserId)
+                        .Select(s => s.Saldo)
+                        .FirstOrDefaultAsync();
+
+                    // Si el saldo es menor que el costo estimado, finalizar la llamada
+                    if (saldo < costoLlamada)
+                    {
+                        _logger.LogWarning($"Finalizando llamada {llamada.Id} por saldo insuficiente. Saldo: {saldo}, Costo estimado: {costoLlamada}");
+
+                        // Finalizar la llamada
+                        await FinalizarLlamadaInterna(llamada.Id, llamada.UserId);
+
+                        // Actualizar estado especial
+                        llamada.Estado = "finalizada_saldo";
+                        llamada.Detalles = $"Llamada finalizada por saldo insuficiente. Saldo: {saldo}, Costo estimado: {costoLlamada}";
+                        await _context.SaveChangesAsync();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al verificar saldo de llamadas activas");
+            }
         }
         public async Task FinalizarLlamadasAbandonadas()
         {

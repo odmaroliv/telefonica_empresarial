@@ -32,12 +32,11 @@ namespace TelefonicaEmpresarial.Controllers
             _logger = logger;
         }
 
+
+
         [HttpPost("stripe")]
         public async Task<IActionResult> StripeWebhook()
         {
-
-
-
             string json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
             string signatureHeader = Request.Headers["Stripe-Signature"];
 
@@ -49,34 +48,64 @@ namespace TelefonicaEmpresarial.Controllers
 
             try
             {
-                // Configurar tiempo máximo de procesamiento para el webhook
+                // Establecer tiempo máximo de procesamiento para el webhook
                 var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(25)); // Asegura que el webhook responda en menos de 30 segundos
+
+                // Extraer el ID del evento para logging (sin verificar firma aún)
+                string eventId = "desconocido";
+                try
+                {
+                    var eventObject = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+                    if (eventObject != null && eventObject.TryGetValue("id", out var id))
+                    {
+                        eventId = id.ToString() ?? "desconocido";
+                    }
+                }
+                catch
+                {
+                    // Ignorar errores al intentar extraer el ID
+                }
+
+                _logger.LogInformation($"Webhook de Stripe recibido: {eventId}");
+
+                // Procesar el evento
                 await _stripeService.ProcesarEventoWebhook(json, signatureHeader, timeoutCts.Token);
+
+                _logger.LogInformation($"Webhook de Stripe procesado correctamente: {eventId}");
                 return Ok();
             }
-            catch (StripeException ex)
+            catch (StripeException ex) when (ex.StripeError?.Type == "signature_verification_failure")
             {
-                if (ex.StripeError?.Type == "signature_verification_failure")
-                {
-                    _logger.LogWarning(ex, "Intento de webhook con firma inválida");
-                    return Unauthorized("Firma inválida");
-                }
-                else
-                {
-                    _logger.LogError(ex, "Error al procesar webhook de Stripe");
-                    return StatusCode(500, new { error = "Error al procesar webhook" });
-                }
+                _logger.LogWarning(ex, "Intento de webhook con firma inválida");
+                return Unauthorized("Firma inválida");
             }
             catch (OperationCanceledException)
             {
                 _logger.LogWarning("Procesamiento del webhook de Stripe cancelado por timeout");
-                // Para Stripe, debemos devolver 200 incluso si hubo timeout, para evitar reintentos
+                // Para Stripe, debemos devolver 200 incluso si hubo timeout, para evitar reintentos innecesarios
+                // El procesamiento continuará en segundo plano
                 return Ok("Procesamiento en curso");
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                _logger.LogWarning(ex, "Conflicto de concurrencia al procesar webhook de Stripe");
+                // Stripe reintentará automáticamente, así que devolvemos 200 para evitar reintentos innecesarios
+                return Ok("Conflicto de concurrencia, reintentando");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error no manejado al procesar webhook de Stripe");
-                return StatusCode(500, new { error = "Error interno del servidor" });
+
+                // Para errores temporales, permitir que Stripe reintente
+                if (ex is TimeoutException ||
+                    ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
+                    ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase))
+                {
+                    return StatusCode(500, new { error = "Error temporal, reintentar" });
+                }
+
+                // Para errores permanentes, devolver 200 para que Stripe no reintente
+                return Ok("Error procesado");
             }
         }
 

@@ -53,7 +53,14 @@
                 <h2 class="text-2xl font-bold text-gray-800 mb-2">¡Compra exitosa!</h2>
                 <p class="text-gray-600 mb-6">
                     Tu número telefónico está siendo configurado.<br />
-                    Pronto estará disponible en tu dashboard.
+                    @if (!numeroActivo)
+                    {
+                        <span class="text-yellow-600">El sistema está procesando tu compra. Este proceso puede tomar unos minutos.</span>
+                    }
+                    else
+                    {
+                        <span>Tu número ya está disponible en tu dashboard.</span>
+                    }
                 </p>
                 <div class="bg-gray-50 rounded-lg p-6 mb-8">
                     <div class="flex justify-between mb-2">
@@ -62,7 +69,9 @@
                     </div>
                     <div class="flex justify-between mb-2">
                         <span class="font-medium">Estado:</span>
-                        <span class="text-green-600 font-medium">En procesamiento</span>
+                        <span class="@(numeroActivo ? "text-green-600" : "text-yellow-600") font-medium">
+                            @(numeroActivo ? "Activo" : "En procesamiento")
+                        </span>
                     </div>
                     <div class="flex justify-between">
                         <span class="font-medium">SMS:</span>
@@ -84,6 +93,7 @@
     private string? error;
     private string? numeroAdquirido;
     private bool smsHabilitado;
+    private bool numeroActivo;
     private string? sessionId;
     private int? numeroId;
 
@@ -106,8 +116,8 @@
                     Logger.LogInformation($"NumeroId recuperado de sesión: {numeroId}");
                 }
 
-                // Verificar el pago - IMPORTANTE: no procesar el pago aquí, solo verificar
-                await VerificarCompra();
+                // SÓLO consultar el estado del pago y mostrar información al usuario
+                await ConsultarEstadoPago();
             }
             else
             {
@@ -117,7 +127,7 @@
         }
         catch (Exception ex)
         {
-            error = $"Ocurrió un error al procesar tu compra: {ex.Message}";
+            error = $"Ocurrió un error al consultar tu compra: {ex.Message}";
             Logger.LogError(ex, "Error al inicializar la página de éxito");
         }
         finally
@@ -126,7 +136,7 @@
         }
     }
 
-    private async Task VerificarCompra()
+    private async Task ConsultarEstadoPago()
     {
         try
         {
@@ -136,48 +146,68 @@
                 return;
             }
 
-            // SOLO verificar que el pago se completó, NO PROCESAR
-            bool pagoCompletado = await StripeService.VerificarPagoCompletado(sessionId);
+            // Verificar el estado del pago
+            var session = await StripeService.ObtenerDetallesSesion(sessionId);
 
-            if (!pagoCompletado)
+            if (session == null)
             {
-                error = "El pago no se ha completado correctamente. Por favor, contacta a soporte.";
-                Logger.LogWarning($"Pago no completado para sesión {sessionId}");
+                error = "No se pudo obtener información sobre la sesión de pago.";
                 return;
             }
 
-            Logger.LogInformation($"Pago verificado para sesión {sessionId}");
+            if (session.PaymentStatus != "paid")
+            {
+                error = "El pago aún no se ha completado. El webhook procesará la transacción cuando se confirme el pago.";
+                Logger.LogWarning($"Pago aún no completado para sesión {sessionId}");
+                return;
+            }
 
-            // Buscar el número asociado a esta transacción (ya sea por ID almacenado o buscándolo)
+            Logger.LogInformation($"Estado de pago para sesión {sessionId}: {session.PaymentStatus}");
+
+            // Buscar información sobre el número asociado
             if (numeroId.HasValue)
             {
+                // Si tenemos ID del número, consultamos sus detalles
                 var numeroDetalle = await TelefonicaService.ObtenerNumeroDetalle(numeroId.Value);
                 if (numeroDetalle != null)
                 {
                     numeroAdquirido = numeroDetalle.Numero;
                     smsHabilitado = numeroDetalle.SMSHabilitado;
-
-
-                    Logger.LogInformation($"Detalles del número recuperados: {numeroAdquirido}");
+                    numeroActivo = numeroDetalle.Activo;
+                    Logger.LogInformation($"Detalles del número recuperados: {numeroAdquirido}, Activo: {numeroActivo}");
                 }
                 else
                 {
-                    error = "No se pudo encontrar el número adquirido en nuestra base de datos.";
-                    Logger.LogWarning($"No se encontró el número con ID {numeroId}");
+                    // No encontramos el número pero sabemos que el pago fue exitoso
+                    error = "Pago confirmado. El número está siendo procesado por nuestro sistema. Por favor, verifica en tu dashboard en unos minutos.";
+                    Logger.LogWarning($"No se encontró el número con ID {numeroId} aunque el pago fue exitoso");
                 }
             }
             else
             {
-               
-                numeroAdquirido = "Tu número está siendo configurado";
-                smsHabilitado = false;
-                Logger.LogWarning("No se tiene numeroId en sesión");
+                // Si no tenemos ID del número, intentamos buscarlo por la sesión de pago
+                var transaccion = await TelefonicaService.ObtenerTransaccionPorSesion(sessionId);
+                if (transaccion?.NumeroTelefonico != null)
+                {
+                    numeroAdquirido = transaccion.NumeroTelefonico.Numero;
+                    smsHabilitado = transaccion.NumeroTelefonico.SMSHabilitado;
+                    numeroActivo = transaccion.NumeroTelefonico.Activo;
+                    Logger.LogInformation($"Número encontrado por transacción: {numeroAdquirido}, Activo: {numeroActivo}");
+                }
+                else
+                {
+                    // Si no encontramos el número, mostramos mensaje genérico
+                    numeroAdquirido = "Tu número está siendo procesado";
+                    smsHabilitado = false;
+                    numeroActivo = false;
+                    Logger.LogWarning("No se encontró número asociado a la sesión de pago");
+                }
             }
         }
         catch (Exception ex)
         {
-            error = $"Ocurrió un error al verificar tu compra: {ex.Message}";
-            Logger.LogError(ex, "Error al verificar la compra");
+            error = $"Ocurrió un error al consultar tu compra: {ex.Message}";
+            Logger.LogError(ex, "Error al consultar el estado del pago");
         }
     }
 

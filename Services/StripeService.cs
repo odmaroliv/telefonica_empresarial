@@ -612,15 +612,30 @@ namespace TelefonicaEmpresarial.Services
         }
 
         // Método para verificar si un evento ya fue procesado (idempotencia)
+        // Mejoras en los métodos de idempotencia en StripeService.cs
+
+        // 1. Mejorar el método para verificar si un evento ya fue procesado
         private async Task<bool> VerificarEventoProcesado(string eventId)
         {
             try
             {
-                // Verificar en una tabla específica o mediante otro mecanismo
-                var eventoRegistrado = await _context.EventosWebhook
-                    .AnyAsync(e => e.EventoId == eventId && e.Completado);
+                // Utilizar una consulta optimizada con FirstOrDefaultAsync en lugar de Any
+                var evento = await _context.EventosWebhook
+                    .FirstOrDefaultAsync(e => e.EventoId == eventId);
 
-                return eventoRegistrado;
+                if (evento == null)
+                {
+                    return false; // No existe, no ha sido procesado
+                }
+
+                // Si existe pero no está completado, verificar si ha pasado mucho tiempo
+                if (!evento.Completado && evento.FechaRecibido < DateTime.UtcNow.AddHours(-1))
+                {
+                    _logger.LogWarning($"Evento {eventId} en estado incompleto por más de 1 hora, permitiendo reprocesamiento");
+                    return false; // Permitir reprocesar eventos antiguos incompletos
+                }
+
+                return evento.Completado;
             }
             catch (Exception ex)
             {
@@ -629,30 +644,43 @@ namespace TelefonicaEmpresarial.Services
             }
         }
 
-        // Métodos adicionales para registro de eventos
+        // 2. Mejorar el registro de eventos
         private async Task RegistrarProcesamientoEvento(string eventId)
         {
             try
             {
-                // Crear o actualizar registro del evento
-                var evento = await _context.EventosWebhook.FindAsync(eventId);
+                // Usar transacción para evitar problemas de concurrencia
+                using var transaction = await _context.Database.BeginTransactionAsync();
+
+                // Intentar encontrar el evento existente con bloqueo
+                var evento = await _context.EventosWebhook
+                    .FromSqlRaw("SELECT * FROM EventosWebhook WITH (UPDLOCK) WHERE EventoId = {0}", eventId)
+                    .FirstOrDefaultAsync();
+
                 if (evento == null)
                 {
+                    // Crear nuevo registro si no existe
                     evento = new EventoWebhook
                     {
                         EventoId = eventId,
                         FechaRecibido = DateTime.UtcNow,
+                        NumeroIntentos = 1,
+                        FechaUltimoIntento = DateTime.UtcNow,
                         Completado = false
                     };
                     _context.EventosWebhook.Add(evento);
                 }
                 else
                 {
+                    // Actualizar el registro existente
                     evento.FechaUltimoIntento = DateTime.UtcNow;
                     evento.NumeroIntentos += 1;
                 }
 
                 await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                _logger.LogInformation($"Evento {eventId} registrado para procesamiento (intento #{evento.NumeroIntentos})");
             }
             catch (Exception ex)
             {
@@ -661,22 +689,71 @@ namespace TelefonicaEmpresarial.Services
             }
         }
 
+        // 3. Mejorar el marcado de eventos como completados
         private async Task MarcarEventoComoCompletado(string eventId)
         {
             try
             {
-                var evento = await _context.EventosWebhook.FindAsync(eventId);
+                // Usar transacción para evitar problemas de concurrencia
+                using var transaction = await _context.Database.BeginTransactionAsync();
+
+                // Intentar encontrar el evento existente con bloqueo
+                var evento = await _context.EventosWebhook
+                    .FromSqlRaw("SELECT * FROM EventosWebhook WITH (UPDLOCK) WHERE EventoId = {0}", eventId)
+                    .FirstOrDefaultAsync();
+
                 if (evento != null)
                 {
                     evento.Completado = true;
                     evento.FechaCompletado = DateTime.UtcNow;
                     await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    _logger.LogInformation($"Evento {eventId} marcado como completado");
+                }
+                else
+                {
+                    _logger.LogWarning($"No se encontró el evento {eventId} para marcarlo como completado");
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error al marcar evento {eventId} como completado");
                 // Continuar a pesar del error
+            }
+        }
+
+        // 4. Mejorar la verificación de transacciones procesadas
+        private async Task<bool> VerificarTransaccionYaProcesada(string sessionId, string? userId = null)
+        {
+            try
+            {
+                // Consultar si existe transacción completada con este sessionId
+                var transaccionCompletada = await _context.Transacciones
+                    .AnyAsync(t => t.StripePaymentId == sessionId && t.Status == "Completado");
+
+                if (transaccionCompletada)
+                {
+                    _logger.LogInformation($"La transacción {sessionId} ya fue completada anteriormente");
+                    return true;
+                }
+
+                // Verificar si ya existe un registro para esta sesión en movimientos de saldo
+                var recargaProcesada = await _context.MovimientosSaldo
+                    .AnyAsync(m => m.ReferenciaExterna == sessionId);
+
+                if (recargaProcesada)
+                {
+                    _logger.LogInformation($"La recarga {sessionId} ya fue procesada anteriormente");
+                    return true;
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al verificar si la transacción {sessionId} ya fue procesada");
+                return false; // En caso de error, asumimos que no está procesada para evitar perder transacciones
             }
         }
 
@@ -752,43 +829,8 @@ namespace TelefonicaEmpresarial.Services
                 _logger.LogError(ex, $"Error al procesar recarga de saldo para sesión {sessionId}");
             }
         }
-
-        /// <summary>
-        /// Verifica si una transacción de recarga ya fue procesada
-        /// </summary>
-        private async Task<bool> VerificarTransaccionYaProcesada(string sessionId, string userId)
-        {
-            try
-            {
-                // Verificar si ya existe un registro para esta sesión
-                var transaccionExistente = await _context.MovimientosSaldo
-                    .AnyAsync(m => m.ReferenciaExterna == sessionId);
-
-                if (transaccionExistente)
-                {
-                    _logger.LogInformation($"La transacción {sessionId} ya fue procesada anteriormente");
-                    return true;
-                }
-
-                // Verificar en las transacciones de números también
-                var compraNumeroProcesada = await _context.Transacciones
-                    .AnyAsync(t => t.StripePaymentId == sessionId);
-
-                if (compraNumeroProcesada)
-                {
-                    _logger.LogInformation($"La compra con sesión {sessionId} ya fue procesada anteriormente");
-                    return true;
-                }
-
-                return false;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error al verificar si la transacción {sessionId} ya fue procesada");
-                return false; // En caso de error, asumimos que no está procesada para evitar perder transacciones
-            }
-        }
-
+        // Mejora del método ManejarSesionCompletada en StripeService.cs
+        // En la clase StripeService.cs, actualiza el método ManejarSesionCompletada:
 
         private async Task ManejarSesionCompletada(Session sesion)
         {
@@ -802,6 +844,22 @@ namespace TelefonicaEmpresarial.Services
 
             try
             {
+                // Verificar si la sesión ya fue procesada anteriormente (idempotencia)
+                if (await VerificarTransaccionYaProcesada(sesion.Id, null))
+                {
+                    _logger.LogInformation($"Sesión {sesion.Id} ya fue procesada anteriormente, omitiendo");
+                    return;
+                }
+
+                // Obtener metadata de la sesión para saber si es una compra de número o una recarga
+                if (sesion.Metadata?.TryGetValue("TipoTransaccion", out var tipoTransaccion) == true
+                    && tipoTransaccion == "RecargaSaldo")
+                {
+                    // Procesar como recarga de saldo (ya está implementado)
+                    await ProcesarRecargaSaldo(sesion.Id);
+                    return;
+                }
+
                 // Buscar la transacción asociada a esta sesión
                 var transaccion = await _context.Transacciones
                     .Include(t => t.NumeroTelefonico)
@@ -809,29 +867,83 @@ namespace TelefonicaEmpresarial.Services
 
                 if (transaccion == null)
                 {
-                    _logger.LogWarning($"No se encontró transacción para la sesión {sesion.Id}");
+                    // Si no existe una transacción previa, podría ser una compra iniciada
+                    // pero no completada. En este caso, necesitamos datos adicionales.
+                    if (sesion.Metadata?.TryGetValue("NumeroTelefono", out var numeroTelefono) == true)
+                    {
+                        var customerId = sesion.CustomerId;
+                        var usuario = await _context.Users.FirstOrDefaultAsync(u => u.StripeCustomerId == customerId);
+
+                        if (usuario != null)
+                        {
+                            // Extraer datos de la sesión para procesar la compra
+                            bool incluirSMS = sesion.Metadata.TryGetValue("IncluirSMS", out var incluirSMSValue)
+                                && incluirSMSValue == "true";
+
+                            // Obtener servicio de telefonía para procesar la compra
+                            var telefoniaService = _serviceProvider.GetRequiredService<ITelefonicaService>();
+
+                            // Procesar la compra directamente desde el webhook
+                            await telefoniaService.ProcesarCompraNumero(
+                                usuario,
+                                numeroTelefono,
+                                null, // Número de redirección (el usuario lo configurará después)
+                                incluirSMS,
+                                sesion.Id,
+                                sesion.SubscriptionId
+                            );
+                        }
+                        else
+                        {
+                            _logger.LogWarning($"No se encontró usuario para el cliente {customerId}");
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"No se encontró transacción ni metadata para la sesión {sesion.Id}");
+                    }
                     return;
                 }
 
-                // Actualizar la transacción
+                // Actualizar la transacción existente
                 transaccion.Status = "Completado";
 
-                // Si es una suscripción, guardar el ID
+                // Si tu modelo de Transaccion tiene FechaCompletado, usa esto:
+                transaccion.FechaCompletado = DateTime.UtcNow;
+
+                // Si es una suscripción, guardar el ID y activar el número
                 if (sesion.SubscriptionId != null && transaccion.NumeroTelefonico != null)
                 {
                     transaccion.NumeroTelefonico.StripeSubscriptionId = sesion.SubscriptionId;
                     transaccion.NumeroTelefonico.Activo = true;
+                    transaccion.NumeroTelefonico.FechaExpiracion = DateTime.UtcNow.AddMonths(1);
 
-                    _logger.LogInformation($"Número activado y asociado a suscripción {sesion.SubscriptionId}");
+                    // Aquí configuraríamos el número en Twilio si no está configurado
+
+                    if (!string.IsNullOrEmpty(transaccion.NumeroTelefonico.NumeroRedireccion) &&
+                        transaccion.NumeroTelefonico.NumeroRedireccion != "pendiente")
+                    {
+                        var twilioService = _serviceProvider.GetRequiredService<ITwilioService>();
+                        await twilioService.ConfigurarRedireccion(
+                            transaccion.NumeroTelefonico.PlivoUuid,
+                            transaccion.NumeroTelefonico.NumeroRedireccion
+                        );
+
+                        if (transaccion.NumeroTelefonico.SMSHabilitado)
+                        {
+                            await twilioService.ActivarSMS(transaccion.NumeroTelefonico.PlivoUuid);
+                        }
+                    }
+
+                    _logger.LogInformation($"Número {transaccion.NumeroTelefonico.Numero} activado y configurado por webhook");
                 }
 
                 await _context.SaveChangesAsync();
-
-                _logger.LogInformation($"Transacción {transaccion.Id} actualizada correctamente");
+                _logger.LogInformation($"Transacción {transaccion.Id} actualizada correctamente por webhook");
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error al manejar sesión completada: {ex.Message}");
+                _logger.LogError(ex, $"Error al manejar sesión completada: {ex.Message}");
                 throw;
             }
         }

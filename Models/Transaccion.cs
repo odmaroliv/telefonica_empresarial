@@ -21,6 +21,7 @@ namespace TelefonicaEmpresaria.Models
 
         [Required]
         public DateTime Fecha { get; set; } = DateTime.UtcNow;
+        public DateTime? FechaCompletado { get; set; }
 
         [Required]
         public decimal Monto { get; set; }

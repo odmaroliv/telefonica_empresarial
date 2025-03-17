@@ -1,7 +1,11 @@
+using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Quartz;
+using System.Text.Json;
 using System.Threading.RateLimiting;
 using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data;
 using TelefonicaEmpresaria.Models;
@@ -14,26 +18,45 @@ using TelefonicaEmpresarial.Services.BackgroundJobs;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configuraci�n de la conexi�n a la base de datos
+// Configuración de la conexión a la base de datos
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException("No se encontr� la cadena de conexi�n 'DefaultConnection'.");
+    ?? throw new InvalidOperationException("No se encontró la cadena de conexión 'DefaultConnection'.");
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// Configuraci�n de Identity (autenticaci�n y usuarios)
+// Configuración de Identity (autenticación y usuarios)
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 builder.Services.AddDefaultIdentity<ApplicationUser>(options =>
 {
-    options.SignIn.RequireConfirmedAccount = true;
+    //Cambiar a true para requerir confirmación de correo cuando le metamos sendgrid
+    options.SignIn.RequireConfirmedAccount = false;
+    options.SignIn.RequireConfirmedEmail = false;
     options.Password.RequireDigit = true;
     options.Password.RequireLowercase = true;
     options.Password.RequireUppercase = true;
     options.Password.RequireNonAlphanumeric = true;
     options.Password.RequiredLength = 8;
+
 })
 .AddRoles<IdentityRole>()
 .AddEntityFrameworkStores<ApplicationDbContext>();
+
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    // Configuración para mejorar seguridad
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+
+    // Tiempo de expiración
+    options.ExpireTimeSpan = TimeSpan.FromDays(1);
+    options.SlidingExpiration = true;
+
+    // Rutas personalizadas
+    options.LoginPath = "/Identity/Account/Login";
+    options.AccessDeniedPath = "/Identity/Account/AccessDenied";
+});
 
 // Configuración de HttpClient
 builder.Services.AddHttpClient("API", client =>
@@ -47,6 +70,25 @@ builder.Services.AddHttpClient("API", client =>
 });
 
 
+//Health Checks
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<ApplicationDbContext>("database")
+    .AddCheck("self", () => HealthCheckResult.Healthy())
+    // Agrega otros servicios críticos
+    .AddUrlGroup(new Uri("https://api.twilio.com/"), "twilio-api")
+    .AddUrlGroup(new Uri("https://status.stripe.com/"), "stripe-status")
+    .AddCheck<QuartzJobsHealthCheck>("quartz-jobs");
+
+
+// Configuración de Health Checks UI
+builder.Services.AddHealthChecksUI(options =>
+{
+    options.SetEvaluationTimeInSeconds(60);
+    options.MaximumHistoryEntriesPerEndpoint(10);
+    options.AddHealthCheckEndpoint("API", "/healthz"); // Usamos un endpoint especial para el monitoreo
+
+})
+.AddInMemoryStorage();
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -105,7 +147,7 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
-// Configuraci�n de p�ginas Razor y Blazor Server
+// Configuración de páginas Razor y Blazor Server
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<ApplicationUser>>();
@@ -119,7 +161,7 @@ builder.Services.AddScoped<IValidationService, ValidationService>();
 builder.Services.AddScoped<ILlamadasService, LlamadasService>();
 
 
-// Configuraci�n de CORS si es necesario
+// Configuración de CORS si es necesario
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowWebhooks", policy =>
@@ -157,7 +199,6 @@ builder.Services.AddQuartz(q =>
 
 builder.Services.AddQuartz(q =>
 {
-    // Configurar el job
     var jobKey = new JobKey("LlamadasMonitorJob");
 
     q.AddJob<LlamadasMonitorJob>(opts => opts.WithIdentity(jobKey));
@@ -169,12 +210,17 @@ builder.Services.AddQuartz(q =>
         .WithSimpleSchedule(x => x
             .WithIntervalInSeconds(60)
             .RepeatForever()));
+    // En Program.cs
+    q.AddTrigger(opts => opts
+        .ForJob(jobKey)
+        .WithIdentity("VerificarSaldoLlamadasActivas-Trigger")
+        .WithSimpleSchedule(x => x
+            .WithIntervalInSeconds(30)
+            .RepeatForever()));
 });
 
-
-
 builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
-// Protecci�n antiforgery y otras medidas de seguridad
+// Protección antiforgery y otras medidas de seguridad
 builder.Services.AddAntiforgery(options =>
 {
     options.HeaderName = "X-CSRF-TOKEN";
@@ -182,6 +228,13 @@ builder.Services.AddAntiforgery(options =>
     options.Cookie.HttpOnly = true;
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
     options.Cookie.SameSite = SameSiteMode.Strict;
+});
+
+// Crear una política de autorización para health checks
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy =>
+        policy.RequireRole("Admin"));
 });
 
 var app = builder.Build();
@@ -205,7 +258,7 @@ app.UseStaticFiles();
 app.UseRateLimiter();
 app.UseRouting();
 
-// Uso de CORS antes de la autenticaci�n
+// Uso de CORS antes de la autenticación
 app.UseCors("AllowWebhooks");
 
 app.UseAuthentication();
@@ -236,8 +289,41 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Error al realizar la migraci�n o seed de la base de datos.");
+        logger.LogError(ex, "Error al realizar la migración o seed de la base de datos.");
     }
 }
+
+// 1. Endpoint público básico - sin autenticación, para verificación básica (load balancers, etc.)
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false, // No ejecutar checks, solo verificar que la app responde
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync(JsonSerializer.Serialize(new { status = "alive" }));
+    }
+}).AllowAnonymous();
+
+// 2. Endpoint para la UI de Health Checks (autenticado con JSON específico)
+app.MapHealthChecks("/healthz", new HealthCheckOptions
+{
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse,
+    AllowCachingResponses = false
+}).AllowAnonymous(); // La UI accede a este sin autenticación
+
+// 3. Endpoint detallado para administradores
+app.MapHealthChecks("/health/details", new HealthCheckOptions
+{
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse,
+    AllowCachingResponses = false
+}).RequireAuthorization("AdminOnly");
+
+
+// 4. Health Checks UI - protegido para administradores
+app.MapHealthChecksUI(options =>
+{
+    options.UIPath = "/health-ui";
+    options.ApiPath = "/health-api"; // Esta es la forma correcta de configurarlo
+}).RequireAuthorization("AdminOnly");
 
 app.Run();
