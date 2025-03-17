@@ -35,6 +35,9 @@ namespace TelefonicaEmpresarial.Controllers
         [HttpPost("stripe")]
         public async Task<IActionResult> StripeWebhook()
         {
+
+
+
             string json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
             string signatureHeader = Request.Headers["Stripe-Signature"];
 
@@ -85,16 +88,20 @@ namespace TelefonicaEmpresarial.Controllers
                 // Verificar la firma de Twilio
                 var requestUrl = $"{Request.Scheme}://{Request.Host}{Request.Path}{Request.QueryString}";
                 var parameters = Request.Form.ToDictionary(x => x.Key, x => x.Value.ToString());
-
-                var validator = new RequestValidator(_twilioAuthToken);
                 var signature = Request.Headers["X-Twilio-Signature"].ToString();
 
+                if (string.IsNullOrEmpty(signature))
+                {
+                    _logger.LogWarning("Webhook de Twilio recibido sin firma");
+                    return Unauthorized("Firma requerida");
+                }
+
+                var validator = new RequestValidator(_twilioAuthToken);
                 if (!validator.Validate(requestUrl, parameters, signature))
                 {
                     _logger.LogWarning("Firma Twilio inválida");
                     return Unauthorized("Firma Twilio inválida");
                 }
-
                 // Buscar el número en nuestra base de datos (To en Twilio es nuestro número)
                 var numeroTelefonico = await _context.NumerosTelefonicos
                     .FirstOrDefaultAsync(n => n.Numero == evento.To);
@@ -161,16 +168,20 @@ namespace TelefonicaEmpresarial.Controllers
         {
             try
             {
-                // Verificar la firma de Twilio
                 var requestUrl = $"{Request.Scheme}://{Request.Host}{Request.Path}{Request.QueryString}";
                 var parameters = Request.Form.ToDictionary(x => x.Key, x => x.Value.ToString());
-
-                var validator = new RequestValidator(_twilioAuthToken);
                 var signature = Request.Headers["X-Twilio-Signature"].ToString();
 
+                if (string.IsNullOrEmpty(signature))
+                {
+                    _logger.LogWarning("Webhook de SMS recibido sin firma");
+                    return Unauthorized("Firma requerida");
+                }
+
+                var validator = new RequestValidator(_twilioAuthToken);
                 if (!validator.Validate(requestUrl, parameters, signature))
                 {
-                    _logger.LogWarning("Firma Twilio inválida");
+                    _logger.LogWarning("Firma Twilio inválida para SMS webhook");
                     return Unauthorized("Firma Twilio inválida");
                 }
 

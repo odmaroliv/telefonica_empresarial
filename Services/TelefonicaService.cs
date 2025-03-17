@@ -585,6 +585,18 @@ namespace TelefonicaEmpresarial.Services
                     return true; // No cobrar por llamadas no completadas
                 }
 
+                // IMPORTANTE: Verificar si esta llamada ya fue cobrada
+                var llamadaYaCobrada = await _context.MovimientosSaldo
+                    .AnyAsync(m => m.NumeroTelefonicoId == numero.Id &&
+                                  m.Concepto.Contains(logLlamada.IdLlamadaPlivo) &&
+                                  m.Fecha > DateTime.UtcNow.AddHours(-24));
+
+                if (llamadaYaCobrada)
+                {
+                    _logger.LogInformation($"La llamada con ID {logLlamada.IdLlamadaPlivo} ya fue cobrada anteriormente");
+                    return true; // Evitar cobro duplicado
+                }
+
                 // Extraer el país del número de origen (simplificado)
                 string pais = "MX"; // Por defecto México
                 if (logLlamada.NumeroOrigen.StartsWith("+1"))
@@ -608,10 +620,10 @@ namespace TelefonicaEmpresarial.Services
                 TimeSpan duracion = TimeSpan.FromSeconds(logLlamada.Duracion);
                 string duracionFormateada = $"{duracion.Minutes}:{duracion.Seconds:D2}";
 
-                // Concepto para el movimiento
-                string concepto = $"Llamada de {logLlamada.NumeroOrigen} ({duracionFormateada} min)";
+                // Concepto para el movimiento (incluir ID para evitar duplicados)
+                string concepto = $"Llamada de {logLlamada.NumeroOrigen} ({duracionFormateada} min) - ID:{logLlamada.IdLlamadaPlivo}";
 
-                // Descontar el saldo
+                // Descontar del saldo
                 return await _saldoService.DescontarSaldo(
                     numero.UserId,
                     costoLlamada,
@@ -624,7 +636,6 @@ namespace TelefonicaEmpresarial.Services
                 return false;
             }
         }
-
 
 
     }

@@ -202,8 +202,7 @@
             {
                 try
                 {
-                    // Tarifas por minuto según el país de destino - esto es temporal y deberías 
-                    // reemplazarlo con tarifas reales de Twilio
+                    // Tarifas por minuto según el país de destino
                     var tarifasPorMinuto = new Dictionary<string, decimal>
         {
             { "MX", 0.20m }, // 0.20 USD por minuto en México
@@ -237,13 +236,27 @@
                         ? configuraciones["IVA"]
                         : 0.16m; // 16% IVA por defecto
 
-                    // Convertir segundos a minutos y redondear hacia arriba
-                    decimal minutos = Math.Ceiling((decimal)duracionSegundos / 60);
 
-                    // Calcular costo con margen e IVA
-                    decimal costoFinal = tarifaMinuto * minutos * (1 + margenLlamadas) * (1 + iva);
+                    decimal costoFinal;
 
-                    // Asegurar un mínimo rentable
+                    if (duracionSegundos < 60)
+                    {
+                        // Para llamadas menores a 1 minuto, cobrar proporcionalmente
+                        decimal fraccionMinuto = (decimal)duracionSegundos / 60;
+                        costoFinal = tarifaMinuto * fraccionMinuto * (1 + margenLlamadas) * (1 + iva);
+
+                        // Asegurar un mínimo rentable para llamadas muy cortas (por ejemplo, 5 segundos)
+                        decimal costoMinimo = 3.0m; // Ajustar según tu modelo de negocio
+                        costoFinal = Math.Max(costoFinal, costoMinimo);
+                    }
+                    else
+                    {
+                        // Para llamadas de más de 1 minuto, redondear hacia arriba
+                        decimal minutos = Math.Ceiling((decimal)duracionSegundos / 60);
+                        costoFinal = tarifaMinuto * minutos * (1 + margenLlamadas) * (1 + iva);
+                    }
+
+                    // Asegurar un mínimo rentable general
                     costoFinal = Math.Max(costoFinal, 5.0m); // Mínimo 5 pesos por llamada
 
                     // Redondear a 2 decimales

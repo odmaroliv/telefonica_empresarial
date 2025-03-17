@@ -1,19 +1,23 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Twilio.Security;
 using Twilio.TwiML;
 
 namespace TelefonicaEmpresarial.Controllers
 {
     [ApiController]
     [Route("api/twilio")]
-
     public class TwilioWebhookController : ControllerBase
     {
         private readonly ILogger<TwilioWebhookController> _logger;
+        private readonly IConfiguration _configuration;
+        private readonly string _twilioAuthToken;
 
-        public TwilioWebhookController(ILogger<TwilioWebhookController> logger)
+        public TwilioWebhookController(ILogger<TwilioWebhookController> logger, IConfiguration configuration)
         {
             _logger = logger;
+            _configuration = configuration;
+            _twilioAuthToken = _configuration["Twilio:AuthToken"] ?? throw new ArgumentNullException("Twilio:AuthToken no configurado");
         }
 
 
@@ -21,6 +25,12 @@ namespace TelefonicaEmpresarial.Controllers
         [AllowAnonymous]
         public IActionResult RedirectCall([FromForm] string To = null, [FromForm] string From = null, [FromForm] string CallSid = null)
         {
+
+            if (!ValidateTwilioSignature())
+            {
+                _logger.LogWarning("Intento de acceso no autorizado al webhook de redirección");
+                return Unauthorized("Firma inválida");
+            }
             try
             {
                 // Obtener el número de redirección
@@ -55,6 +65,12 @@ namespace TelefonicaEmpresarial.Controllers
         [HttpPost("voice")]
         public IActionResult HandleIncomingVoice([FromForm] string To, [FromForm] string From, [FromForm] string CallSid)
         {
+            if (!ValidateTwilioSignature())
+            {
+                _logger.LogWarning("Intento de acceso no autorizado al webhook de voz");
+                return Unauthorized("Firma inválida");
+            }
+
             try
             {
                 _logger.LogInformation($"Recibida llamada entrante: De={From}, A={To}");
@@ -75,6 +91,29 @@ namespace TelefonicaEmpresarial.Controllers
                 response.Say("Lo sentimos, ha ocurrido un error al procesar su llamada.", voice: "alice", language: "es-MX");
 
                 return Content(response.ToString(), "application/xml");
+            }
+        }
+        private bool ValidateTwilioSignature()
+        {
+            try
+            {
+                var requestUrl = $"{Request.Scheme}://{Request.Host}{Request.Path}{Request.QueryString}";
+                var parameters = Request.Form.ToDictionary(x => x.Key, x => x.Value.ToString());
+                var signature = Request.Headers["X-Twilio-Signature"].ToString();
+
+                if (string.IsNullOrEmpty(signature))
+                {
+                    _logger.LogWarning("Petición sin firma de Twilio");
+                    return false;
+                }
+
+                var validator = new RequestValidator(_twilioAuthToken);
+                return validator.Validate(requestUrl, parameters, signature);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al validar firma de Twilio");
+                return false;
             }
         }
     }

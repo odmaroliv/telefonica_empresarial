@@ -1,13 +1,15 @@
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.FileProviders;
+using Quartz;
+using System.Threading.RateLimiting;
 using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data;
 using TelefonicaEmpresaria.Models;
 using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services;
 using TelefonicaEmpresarial.Areas.Identity;
 using TelefonicaEmpresarial.Middleware;
 using TelefonicaEmpresarial.Services;
+using TelefonicaEmpresarial.Services.BackgroundJobs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,6 +33,63 @@ builder.Services.AddDefaultIdentity<ApplicationUser>(options =>
 })
 .AddRoles<IdentityRole>()
 .AddEntityFrameworkStores<ApplicationDbContext>();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        // Diferencia entre webhooks y peticiones normales
+        if (httpContext.Request.Path.StartsWithSegments("/api/webhooks"))
+        {
+            // Webhooks necesitan más permisividad
+            return RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: "webhooks",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    AutoReplenishment = true,
+                    PermitLimit = 100,
+                    QueueLimit = 0,
+                    Window = TimeSpan.FromMinutes(1)
+                });
+        }
+
+        // Limitar por IP para peticiones normales
+        var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: clientIp,
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 20,
+                QueueLimit = 2,
+                Window = TimeSpan.FromSeconds(10)
+            });
+    });
+
+    // Personalizar respuesta de límite excedido
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.StatusCode = 429; // Too Many Requests
+        context.HttpContext.Response.ContentType = "application/json";
+
+        // Obtener tiempo de espera recomendado (si está disponible)
+        TimeSpan? retryAfter = null;
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfterMetadata))
+        {
+            retryAfter = retryAfterMetadata;
+        }
+
+        var response = new
+        {
+            title = "Too many requests",
+            status = 429,
+            detail = "Request limit exceeded. Please try again later.",
+            retryAfter = retryAfter?.TotalSeconds ?? 5 // Default 5 segundos si no hay metadata
+        };
+
+        await context.HttpContext.Response.WriteAsJsonAsync(response, token);
+    };
+});
 
 // Configuraci�n de p�ginas Razor y Blazor Server
 builder.Services.AddRazorPages();
@@ -57,8 +116,37 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.AddQuartz(q =>
+{
+    // Configuración base
+    q.UseMicrosoftDependencyInjectionJobFactory();
+
+    // Configurar LimpiezaDatosJob
+    var limpiezaJobKey = new JobKey("LimpiezaDatos");
+    q.AddJob<LimpiezaDatosJob>(opts => opts.WithIdentity(limpiezaJobKey));
+    q.AddTrigger(opts => opts
+        .ForJob(limpiezaJobKey)
+        .WithIdentity("LimpiezaDatos-Trigger")
+        .WithCronSchedule("0 0 3 * * ?")); // Ejecutar a las 3 AM todos los días
+
+    // Configurar RenovacionNumerosJob
+    var renovacionJobKey = new JobKey("RenovacionNumeros");
+    q.AddJob<RenovacionNumerosJob>(opts => opts.WithIdentity(renovacionJobKey));
+    q.AddTrigger(opts => opts
+        .ForJob(renovacionJobKey)
+        .WithIdentity("RenovacionNumeros-Trigger")
+        .WithCronSchedule("0 0 2 * * ?")); // Ejecutar a las 2 AM todos los días
+});
+builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
 // Protecci�n antiforgery y otras medidas de seguridad
-builder.Services.AddAntiforgery();
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-CSRF-TOKEN";
+    options.Cookie.Name = "CSRF-TOKEN";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+});
 
 var app = builder.Build();
 
@@ -72,28 +160,12 @@ else
     app.UseExceptionHandler("/Error");
     app.UseHsts();
 }
-
+app.UseAntiforgery();
 app.UseGlobalExceptionHandler();
 
 app.UseHttpsRedirection();
 
-app.UseStaticFiles(); // Ya deber�a estar configurado
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new PhysicalFileProvider(Path.Combine(builder.Environment.WebRootPath, "documentos")),
-    RequestPath = "/documentos",
-    OnPrepareResponse = ctx =>
-    {
-        // Solo usuarios autenticados pueden acceder a los documentos
-        if (!ctx.Context.User.Identity.IsAuthenticated)
-        {
-            ctx.Context.Response.StatusCode = 401;
-            ctx.Context.Response.Body = Stream.Null;
-        }
-    }
-});
-Directory.CreateDirectory(Path.Combine(builder.Environment.WebRootPath, "documentos"));
-
+app.UseRateLimiter();
 app.UseRouting();
 
 // Uso de CORS antes de la autenticaci�n
