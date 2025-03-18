@@ -249,6 +249,13 @@ builder.Services.AddAuthorization(options =>
 });
 
 var app = builder.Build();
+// Cerca del inicio de Configure, justo después de app.Build()
+app.Use(async (context, next) =>
+{
+    app.Logger.LogInformation($"Solicitud recibida: {context.Request.Method} {context.Request.Path} - User Agent: {context.Request.Headers["User-Agent"]}");
+    await next();
+    app.Logger.LogInformation($"Respuesta enviada: {context.Response.StatusCode}");
+});
 
 // Configure el pipeline de solicitud HTTP.
 if (app.Environment.IsDevelopment())
