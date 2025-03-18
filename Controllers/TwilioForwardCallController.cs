@@ -54,7 +54,7 @@ namespace TelefonicaEmpresarial.Controllers
                 {
                     _logger.LogWarning($"LLAMADA-ERROR: Se intentó llamar al mismo número origen y destino: {to}");
                     var errorResponse = new VoiceResponse();
-                    errorResponse.Say("Error en la configuración de la llamada. El origen y destino son iguales.", voice: "alice", language: "es-MX");
+                    //errorResponse.Say("Error en la configuración de la llamada. El origen y destino son iguales.", voice: "alice", language: "es-MX");
                     errorResponse.Hangup();
                     return Content(errorResponse.ToString(), "application/xml");
                 }
@@ -68,8 +68,8 @@ namespace TelefonicaEmpresarial.Controllers
                 // Generar TwiML para conectar la llamada
                 var response = new VoiceResponse();
 
-                // Opcionalmente, mensaje de bienvenida
-                response.Say("Conectando su llamada.", voice: "alice", language: "es-MX");
+                //// Opcionalmente, mensaje de bienvenida
+                //response.Say("Conectando su llamada.", voice: "alice", language: "es-MX");
 
                 // Conectar al número destino
                 var dial = new Dial(callerId: formattedFrom);
@@ -85,7 +85,7 @@ namespace TelefonicaEmpresarial.Controllers
             {
                 _logger.LogError(ex, "LLAMADA-ERROR: Error al generar TwiML: {Message}", ex.Message);
                 var errorResponse = new VoiceResponse();
-                errorResponse.Say("Lo sentimos, ha ocurrido un error al procesar su llamada.", voice: "alice", language: "es-MX");
+                //errorResponse.Say("Lo sentimos, ha ocurrido un error al procesar su llamada.", voice: "alice", language: "es-MX");
                 errorResponse.Hangup();
                 return Content(errorResponse.ToString(), "application/xml");
             }
@@ -109,7 +109,7 @@ namespace TelefonicaEmpresarial.Controllers
                 {
                     _logger.LogWarning($"LLAMADA-DEBUG: No se encontró la llamada con ID {callId}");
                     var errorResponse = new VoiceResponse();
-                    errorResponse.Say("No se encontró la información de la llamada. Por favor, intente nuevamente.", voice: "alice", language: "es-MX");
+                    //errorResponse.Say("No se encontró la información de la llamada. Por favor, intente nuevamente.", voice: "alice", language: "es-MX");
                     errorResponse.Hangup();
                     return Content(errorResponse.ToString(), "application/xml");
                 }
@@ -137,7 +137,7 @@ namespace TelefonicaEmpresarial.Controllers
             {
                 _logger.LogError(ex, "LLAMADA-ERROR: Error al conectar llamada final con ID en ruta");
                 var errorResponse = new VoiceResponse();
-                errorResponse.Say("Lo sentimos, ha ocurrido un error al conectar su llamada.", voice: "alice", language: "es-MX");
+                //errorResponse.Say("Lo sentimos, ha ocurrido un error al conectar su llamada.", voice: "alice", language: "es-MX");
                 errorResponse.Hangup();
                 return Content(errorResponse.ToString(), "application/xml");
             }

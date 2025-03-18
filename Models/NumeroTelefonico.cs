@@ -40,6 +40,12 @@ namespace TelefonicaEmpresaria.Models
 
         public decimal? CostoSMS { get; set; }
 
+
+        public int PeriodoContratado { get; set; } = 1;
+
+
+        public decimal? DescuentoAplicado { get; set; }
+
         public virtual ICollection<LogLlamada>? LogsLlamadas { get; set; }
         public virtual ICollection<LogSMS>? LogsSMS { get; set; }
     }

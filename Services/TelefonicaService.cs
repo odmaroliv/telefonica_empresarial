@@ -11,7 +11,14 @@ namespace TelefonicaEmpresarial.Services
     {
 
 
-        // Nuevos métodos para procesamiento vía webhook (sin duplicar ObtenerNumeroDetalle)
+        Task<(NumeroTelefonico? Numero, string Error)> ComprarNumeroConPeriodo(
+                ApplicationUser usuario,
+                string numero,
+                string numeroRedireccion,
+                bool habilitarSMS,
+                int periodoMeses,
+                decimal descuento);
+
         Task<(int? NumeroId, string? StripeSessionId, string Error)> IniciarCompraNumero(
             ApplicationUser usuario,
             string numero,
@@ -967,6 +974,131 @@ namespace TelefonicaEmpresarial.Services
                 _logger.LogError(ex, $"Error al verificar número en Twilio: {ex.Message}");
                 // Por seguridad, asumimos que el número no está activo en caso de error
                 return false;
+            }
+        }
+        public async Task<(NumeroTelefonico? Numero, string Error)> ComprarNumeroConPeriodo(
+    ApplicationUser usuario,
+    string numero,
+    string numeroRedireccion,
+    bool habilitarSMS,
+    int periodoMeses,
+    decimal descuento)
+        {
+            try
+            {
+                _logger.LogInformation($"Iniciando proceso de compra del número {numero} para usuario {usuario.Id} con periodo de {periodoMeses} meses");
+
+                // 1. Calcular el costo mensual
+                var (costoNumero, costoSMS) = await ObtenerCostos(numero);
+                decimal costoMensual = costoNumero + (habilitarSMS ? costoSMS : 0);
+
+                // 2. Calcular el costo total del periodo con descuento
+                decimal costoTotal = costoMensual * periodoMeses * (1 - descuento);
+
+                // 3. Verificar si hay saldo suficiente
+                var saldoSuficiente = await _saldoService.VerificarSaldoSuficiente(usuario.Id, costoTotal);
+
+                if (!saldoSuficiente)
+                {
+                    _logger.LogWarning($"Saldo insuficiente para comprar número. UserId: {usuario.Id}, Costo: {costoTotal}");
+                    return (null, "Saldo insuficiente para completar la compra. Por favor, recarga tu saldo.");
+                }
+
+                // 4. Comprar el número en Twilio
+                var numeroComprado = await _twilioService.ComprarNumero(numero);
+
+                if (numeroComprado == null)
+                {
+                    _logger.LogError($"Error al comprar número en Twilio: {numero}");
+                    return (null, "Error al adquirir el número. Por favor, intenta con otro número.");
+                }
+
+                // 5. Registrar el número en nuestra base de datos
+                var fechaActual = DateTime.UtcNow;
+                var nuevoNumero = new NumeroTelefonico
+                {
+                    Numero = numero,
+                    PlivoUuid = numeroComprado.Sid,
+                    UserId = usuario.Id,
+                    NumeroRedireccion = numeroRedireccion,
+                    FechaCompra = fechaActual,
+                    FechaExpiracion = fechaActual.AddMonths(periodoMeses), // Fecha de expiración según el periodo
+                    CostoMensual = costoNumero,
+                    Activo = true,
+                    SMSHabilitado = habilitarSMS,
+                    CostoSMS = habilitarSMS ? costoSMS : null,
+                    PeriodoContratado = periodoMeses // Guardar el periodo contratado (asegúrate de que el modelo tenga esta propiedad)
+                };
+
+                await _retryPolicy.ExecuteAsync(async () =>
+                {
+                    _context.NumerosTelefonicos.Add(nuevoNumero);
+                    await _context.SaveChangesAsync();
+                });
+
+                _logger.LogInformation($"Número registrado en base de datos con ID {nuevoNumero.Id}");
+
+                // 6. Configurar redirección
+                var redirConfigured = await _twilioService.ConfigurarRedireccion(numeroComprado.Sid, numeroRedireccion);
+
+                if (!redirConfigured)
+                {
+                    _logger.LogWarning($"Error al configurar redirección para {numeroComprado.Sid} a {numeroRedireccion}");
+                    // Continuamos a pesar del error, lo intentaremos más tarde
+                }
+
+                // 7. Activar SMS si está habilitado
+                if (habilitarSMS)
+                {
+                    await _twilioService.ActivarSMS(numeroComprado.Sid);
+                }
+
+                // 8. Descontar el saldo
+                string concepto = $"Compra de número {numero}" + (habilitarSMS ? " con SMS" : "") + $" por {periodoMeses} meses";
+                var saldoDescontado = await _saldoService.DescontarSaldo(
+                    usuario.Id,
+                    costoTotal,
+                    concepto,
+                    nuevoNumero.Id);
+
+                if (!saldoDescontado)
+                {
+                    _logger.LogError($"Error al descontar saldo para {usuario.Id}, monto: {costoTotal}");
+                    // A pesar del error, continuamos ya que el número ya fue comprado
+                }
+
+                // 9. Si usamos Stripe para suscripciones (opcional, ajustar según tu implementación)
+                if (!string.IsNullOrEmpty(usuario.StripeCustomerId) && periodoMeses > 1)
+                {
+                    try
+                    {
+                        // Crear una suscripción en Stripe con el periodo correcto
+                        var subscriptionId = await _stripeService.CrearSuscripcionConPeriodo(
+                            usuario.StripeCustomerId,
+                            $"Número Empresarial: {numero}" + (habilitarSMS ? " con SMS" : ""),
+                            costoMensual,
+                            periodoMeses);
+
+                        // Guardar el ID de la suscripción
+                        if (!string.IsNullOrEmpty(subscriptionId))
+                        {
+                            nuevoNumero.StripeSubscriptionId = subscriptionId;
+                            await _context.SaveChangesAsync();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Error al crear suscripción en Stripe para número {nuevoNumero.Id}");
+                        // Continuamos, ya que la compra se completó correctamente
+                    }
+                }
+
+                return (nuevoNumero, string.Empty);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error en proceso de compra con periodo: {ex.Message}");
+                return (null, $"Error al comprar número: {ex.Message}");
             }
         }
     }

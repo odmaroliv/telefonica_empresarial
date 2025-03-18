@@ -172,6 +172,41 @@
                     }
                 </div>
 
+                <!-- Nuevo selector de periodo de suscripción -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Periodo de suscripción</label>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div @onclick="() => CambiarPeriodo(3)" 
+                             class="@(periodoMeses == 3 ? "border-blue-500 bg-blue-50" : "border-gray-200") 
+                                    border-2 rounded-lg p-4 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors">
+                            <div class="font-medium text-center">3 Meses</div>
+                            <div class="text-sm text-gray-600 text-center mt-1">5% de descuento</div>
+                        </div>
+                        <div @onclick="() => CambiarPeriodo(6)" 
+                             class="@(periodoMeses == 6 ? "border-blue-500 bg-blue-50" : "border-gray-200") 
+                                    border-2 rounded-lg p-4 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors
+                                    ring-2 ring-blue-300">
+                            <div class="font-medium text-center">6 Meses</div>
+                            <div class="text-sm text-gray-600 text-center mt-1">10% de descuento</div>
+                            <div class="text-xs text-blue-600 font-medium text-center mt-1">Recomendado</div>
+                        </div>
+                        <div @onclick="() => CambiarPeriodo(12)" 
+                             class="@(periodoMeses == 12 ? "border-blue-500 bg-blue-50" : "border-gray-200") 
+                                    border-2 rounded-lg p-4 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors">
+                            <div class="font-medium text-center">12 Meses</div>
+                            <div class="text-sm text-gray-600 text-center mt-1">15% de descuento</div>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <div class="flex items-center">
+                            <input id="periodo-mensual" type="checkbox" @bind="periodoMensual" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
+                            <label for="periodo-mensual" class="ml-2 block text-sm text-gray-700">
+                                Prefiero pagar mensualmente (sin descuento)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
                     <h3 class="font-semibold text-lg mb-2">Resumen de compra</h3>
                     <div class="flex justify-between mb-2">
@@ -193,19 +228,32 @@
                             <span>$@costoSMS.ToString("0.00") MXN</span>
                         </div>
                     }
+                    <div class="flex justify-between mb-2">
+                        <span>Periodo:</span>
+                        <span>@(periodoMensual ? "1 mes" : $"{periodoMeses} meses")</span>
+                    </div>
+                    
+                    @if (!periodoMensual && periodoMeses > 1)
+                    {
+                        <div class="flex justify-between mb-2 text-green-600">
+                            <span>Descuento:</span>
+                            <span>@ObtenerPorcentajeDescuento()% por periodo de @periodoMeses meses</span>
+                        </div>
+                    }
+                    
                     <div class="border-t border-gray-300 my-2"></div>
                     <div class="flex justify-between font-bold">
-                        <span>Total mensual:</span>
-                        <span>$@(habilitarSMS ? (costoNumero + costoSMS).ToString("0.00") : costoNumero.ToString("0.00")) MXN</span>
+                        <span>Total a pagar:</span>
+                        <span>$@CalcularTotalPago().ToString("0.00") MXN</span>
                     </div>
                     <div class="mt-2 p-2 bg-blue-50 rounded-lg">
                         <div class="flex justify-between">
                             <span>Tu saldo:</span>
-                            <span class="@(saldoUsuario >= (habilitarSMS ? (costoNumero + costoSMS) : costoNumero) ? "text-green-600" : "text-red-600") font-medium">
+                            <span class="@(saldoUsuario >= CalcularTotalPago() ? "text-green-600" : "text-red-600") font-medium">
                                 $@saldoUsuario.ToString("0.00") MXN
                             </span>
                         </div>
-                        @if (saldoUsuario < (habilitarSMS ? (costoNumero + costoSMS) : costoNumero))
+                        @if (saldoUsuario < CalcularTotalPago())
                         {
                             <div class="mt-1 text-xs text-red-600">
                                 Saldo insuficiente. <a href="/saldo" class="underline">Recargar saldo</a>
@@ -218,7 +266,7 @@
                 <div class="mt-6 flex items-center">
                     <button @onclick="ComprarNumero"
                             class="w-full px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled="@(cargandoCompra || saldoUsuario < (habilitarSMS ? (costoNumero + costoSMS) : costoNumero))">
+                            disabled="@(cargandoCompra || saldoUsuario < CalcularTotalPago())">
                         @if (cargandoCompra)
                         {
                             <span class="inline-flex items-center">
@@ -229,7 +277,7 @@
                                 Procesando...
                             </span>
                         }
-                        else if (saldoUsuario < (habilitarSMS ? (costoNumero + costoSMS) : costoNumero))
+                        else if (saldoUsuario < CalcularTotalPago())
                         {
                             <span>Recargar saldo</span>
                         }
@@ -261,6 +309,10 @@
     private decimal costoSMS;
     private decimal saldoUsuario = 0;
     private bool isOnlyUsa = false;
+    
+    // Nuevas variables para el periodo de suscripción
+    private int periodoMeses = 6; // Valor predeterminado: 6 meses
+    private bool periodoMensual = false; // Por defecto, no es mensual sino por el periodo seleccionado
 
     [Inject]
     private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
@@ -289,8 +341,44 @@
             saldoUsuario = await SaldoService.ObtenerSaldoUsuario(user.Id);
         }
         isOnlyUsa = _configuration.GetValue<bool>("Twilio:isOnlyUsa");
+    }
 
-
+    // Método para cambiar el periodo de suscripción
+    private void CambiarPeriodo(int meses)
+    {
+        periodoMeses = meses;
+        periodoMensual = false; // Si seleccionamos un periodo específico, desactivamos la opción mensual
+    }
+    
+    // Método para calcular el porcentaje de descuento según el periodo
+    private int ObtenerPorcentajeDescuento()
+    {
+        if (periodoMensual) return 0;
+        
+        return periodoMeses switch
+        {
+            3 => 5,
+            6 => 10,
+            12 => 15,
+            _ => 0
+        };
+    }
+    
+    // Método para calcular el total a pagar con descuento
+    private decimal CalcularTotalPago()
+    {
+        decimal costoMensualTotal = costoNumero + (habilitarSMS ? costoSMS : 0);
+        
+        if (periodoMensual)
+        {
+            return costoMensualTotal; // Solo un mes, sin descuento
+        }
+        
+        // Calcular el costo total del periodo con descuento
+        decimal subtotal = costoMensualTotal * periodoMeses;
+        decimal descuento = subtotal * (ObtenerPorcentajeDescuento() / 100.0m);
+        
+        return subtotal - descuento;
     }
 
     // Método auxiliar para obtener el usuario actual
@@ -441,12 +529,10 @@
         }
     }
 
-    
-
     private async Task ComprarNumero()
     {
         // Si no hay saldo suficiente, redirigir a la página de recarga
-        decimal costoTotal = habilitarSMS ? (costoNumero + costoSMS) : costoNumero;
+        decimal costoTotal = CalcularTotalPago();
         if (saldoUsuario < costoTotal)
         {
             NavigationManager.NavigateTo("/saldo");
@@ -477,12 +563,17 @@
 
         try
         {
-            // Usar el método ComprarNumero que ya verifica y descuenta el saldo
-            var (numeroComprado, error) = await TelefonicaService.ComprarNumero(
+            // Calcular el periodo a utilizar
+            int periodoFinal = periodoMensual ? 1 : periodoMeses;
+            
+            // Usar el nuevo método ComprarNumeroConPeriodo que incluye el periodo
+            var (numeroComprado, error) = await TelefonicaService.ComprarNumeroConPeriodo(
                 user,
                 numeroSeleccionado.Number,
                 numeroRedireccion,
-                habilitarSMS);
+                habilitarSMS,
+                periodoFinal,
+                ObtenerPorcentajeDescuento() / 100.0m); // Convertir porcentaje a decimal
 
             if (!string.IsNullOrEmpty(error))
             {

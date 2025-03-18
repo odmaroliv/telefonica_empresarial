@@ -13,7 +13,9 @@ namespace TelefonicaEmpresarial.Services
 {
     public interface IStripeService
     {
+        public Task<string> CrearSuscripcionConPeriodo(string customerId, string nombrePlan, decimal montoPlan, int periodoMeses);
 
+        Task<StripeCheckoutSession> CrearSuscripcionRecargaSaldo(string customerId, decimal montoMensual);
         Task<string> CrearClienteStripe(ApplicationUser usuario);
         Task<StripeCheckoutSession> CrearSesionCompra(string customerId, string numeroTelefono, decimal costoMensual, decimal? costoSMS = null);
         Task<bool> VerificarPagoCompletado(string sessionId);
@@ -44,13 +46,15 @@ namespace TelefonicaEmpresarial.Services
         private readonly AsyncRetryPolicy _retryPolicy;
         private readonly IServiceProvider _serviceProvider;
         private readonly ITransaccionMonitorService _transaccionMonitorService;
+        private readonly ISaldoService _saldoService;
 
         public StripeService(
             IConfiguration configuration,
             ApplicationDbContext context,
             ILogger<StripeService> logger,
             IServiceProvider serviceProvider,
-            ITransaccionMonitorService transaccionMonitorService)
+            ITransaccionMonitorService transaccionMonitorService,
+            ISaldoService saldoService)
         {
             _configuration = configuration;
             _context = context;
@@ -77,6 +81,7 @@ namespace TelefonicaEmpresarial.Services
                     }
                 );
             _serviceProvider = serviceProvider;
+            _saldoService = saldoService;
         }
 
         public async Task<string> CrearClienteStripe(ApplicationUser usuario)
@@ -563,7 +568,36 @@ namespace TelefonicaEmpresarial.Services
                 {
                     case "invoice.paid":
                         var invoice = stripeEvent.Data.Object as Invoice;
-                        await ManejarPagoExitoso(invoice);
+
+                        // Verificar si es una factura de suscripción de recarga de saldo
+                        bool esRecargaRecurrente = false;
+                        string? subscriptionId = invoice?.SubscriptionId;
+
+                        if (subscriptionId != null)
+                        {
+                            try
+                            {
+                                var subscriptionService = new Stripe.SubscriptionService();
+                                var subscription = await subscriptionService.GetAsync(subscriptionId);
+
+                                if (subscription.Metadata.TryGetValue("TipoSuscripcion", out var tipoSuscripcion) &&
+                                    tipoSuscripcion == "RecargaSaldoAutomatica")
+                                {
+                                    esRecargaRecurrente = true;
+                                    await ProcesarRecargaRecurrente(invoice);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, $"Error al verificar suscripción {subscriptionId}");
+                            }
+                        }
+
+                        // Si no es una recarga recurrente, procesarlo como pago normal
+                        if (!esRecargaRecurrente)
+                        {
+                            await ManejarPagoExitoso(invoice);
+                        }
                         break;
 
                     case "invoice.payment_failed":
@@ -602,6 +636,7 @@ namespace TelefonicaEmpresarial.Services
                         var paymentFailed = stripeEvent.Data.Object as PaymentIntent;
                         // Procesar pago fallido (si es necesario)
                         break;
+
                 }
                 await MarcarEventoComoCompletado(stripeEvent.Id);
             }
@@ -691,6 +726,70 @@ namespace TelefonicaEmpresarial.Services
             {
                 _logger.LogError(ex, $"Error al registrar inicio de procesamiento del evento {eventId}");
                 // Continuar a pesar del error
+            }
+        }
+        private async Task ProcesarRecargaRecurrente(Invoice invoice)
+        {
+            try
+            {
+                _logger.LogInformation($"Procesando recarga recurrente para factura {invoice.Id}");
+
+                // Verificar si ya fue procesada (idempotencia)
+                bool transaccionExistente = await _saldoService.ExisteTransaccion(invoice.Id);
+                if (transaccionExistente)
+                {
+                    _logger.LogInformation($"La factura {invoice.Id} ya fue procesada anteriormente");
+                    return;
+                }
+
+                // Encontrar el usuario asociado
+                var customerId = invoice.CustomerId;
+                var usuario = await _context.Users.FirstOrDefaultAsync(u => u.StripeCustomerId == customerId);
+
+                if (usuario == null)
+                {
+                    _logger.LogWarning($"No se encontró usuario para el cliente {customerId}");
+                    return;
+                }
+
+                // Calcular monto (Stripe usa centavos)
+                decimal monto = (decimal)invoice.AmountPaid / 100;
+
+                // Registrar la recarga
+                using var dbTransaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    // Agregar saldo
+                    var resultado = await _saldoService.AgregarSaldo(
+                        usuario.Id,
+                        monto,
+                        "Recarga automática mensual (suscripción)",
+                        invoice.Id,
+                        dbTransaction
+                    );
+
+                    if (resultado)
+                    {
+                        await dbTransaction.CommitAsync();
+                        _logger.LogInformation($"Recarga automática de ${monto} procesada correctamente para usuario {usuario.Id}");
+                    }
+                    else
+                    {
+                        await dbTransaction.RollbackAsync();
+                        _logger.LogError($"Error al procesar recarga automática para factura {invoice.Id}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    await dbTransaction.RollbackAsync();
+                    _logger.LogError(ex, $"Error en transacción al procesar recarga automática para factura {invoice.Id}");
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error general al procesar recarga automática para factura {invoice.Id}");
+                // No relanzamos la excepción para no interrumpir el procesamiento del webhook
             }
         }
 
@@ -1254,6 +1353,131 @@ namespace TelefonicaEmpresarial.Services
             });
         }
 
+
+        public async Task<StripeCheckoutSession> CrearSuscripcionRecargaSaldo(string customerId, decimal montoMensual)
+        {
+            return await _retryPolicy.ExecuteAsync(async () =>
+            {
+                try
+                {
+                    _logger.LogInformation($"Creando suscripción de recarga mensual para cliente {customerId}, monto: {montoMensual}");
+
+                    // Crear un producto para la recarga recurrente si no existe
+                    var productoService = new ProductService();
+                    var productos = await productoService.ListAsync(new ProductListOptions
+                    {
+                        Limit = 100,
+                        Active = true
+                    });
+
+                    string productoId;
+                    var productoRecargaRecurrente = productos.FirstOrDefault(p =>
+                        p.Metadata.ContainsKey("Tipo") && p.Metadata["Tipo"] == "RecargaRecurrente");
+
+                    if (productoRecargaRecurrente == null)
+                    {
+                        // Crear un nuevo producto para recarga recurrente
+                        var nuevoProducto = await productoService.CreateAsync(new ProductCreateOptions
+                        {
+                            Name = "Recarga Automática de Saldo",
+                            Description = "Recarga mensual automática de saldo",
+                            Active = true,
+                            Metadata = new Dictionary<string, string> {
+                        { "Tipo", "RecargaRecurrente" }
+                    }
+                        });
+                        productoId = nuevoProducto.Id;
+                    }
+                    else
+                    {
+                        productoId = productoRecargaRecurrente.Id;
+                    }
+
+                    // Crear un precio para el monto específico de la suscripción
+                    var precioService = new PriceService();
+                    var precio = await precioService.CreateAsync(new PriceCreateOptions
+                    {
+                        Product = productoId,
+                        UnitAmount = (long)(montoMensual * 100), // Convertir a centavos
+                        Currency = "mxn",
+                        Recurring = new PriceRecurringOptions
+                        {
+                            Interval = "month",
+                            IntervalCount = 1
+                        },
+                        Nickname = $"Recarga mensual de ${montoMensual} MXN"
+                    });
+
+                    // Configurar los elementos de la sesión de checkout
+                    var options = new SessionCreateOptions
+                    {
+                        Mode = "subscription",
+                        Customer = customerId,
+                        PaymentMethodTypes = new List<string> { "card" },
+                        LineItems = new List<SessionLineItemOptions>
+                {
+                    new SessionLineItemOptions
+                    {
+                        Price = precio.Id,
+                        Quantity = 1
+                    }
+                },
+                        SubscriptionData = new SessionSubscriptionDataOptions
+                        {
+                            Metadata = new Dictionary<string, string>
+                    {
+                        { "TipoSuscripcion", "RecargaSaldoAutomatica" },
+                        { "MontoMensual", montoMensual.ToString() }
+                    }
+                        },
+                        SuccessUrl = $"{_configuration["AppUrl"]}/saldo/recarga/exito?session_id={{CHECKOUT_SESSION_ID}}",
+                        CancelUrl = $"{_configuration["AppUrl"]}/saldo/recarga/cancelada",
+                        Metadata = new Dictionary<string, string>
+                {
+                    { "TipoTransaccion", "SuscripcionRecargaSaldo" },
+                    { "MontoMensual", montoMensual.ToString() }
+                }
+                    };
+
+                    // Crear la sesión
+                    var service = new SessionService();
+                    var session = await service.CreateAsync(options);
+
+                    _logger.LogInformation($"Sesión de suscripción para recarga mensual creada. ID: {session.Id}");
+
+                    // Encontrar el usuario correspondiente a este customerId para el monitoreo
+                    var usuario = await _context.Users.FirstOrDefaultAsync(u => u.StripeCustomerId == customerId);
+                    if (usuario != null)
+                    {
+                        // Registrar la transacción en el sistema de monitoreo
+                        await _transaccionMonitorService.RegistrarInicioTransaccion(
+                            "SuscripcionRecargaSaldo",
+                            session.Id,
+                            usuario.Id,
+                            montoMensual,
+                            System.Text.Json.JsonSerializer.Serialize(new { session.Id, customerId, montoMensual })
+                        );
+                    }
+
+                    return new StripeCheckoutSession
+                    {
+                        SessionId = session.Id,
+                        Url = session.Url
+                    };
+                }
+                catch (StripeException ex)
+                {
+                    _logger.LogError($"Error de Stripe al crear suscripción de recarga mensual: {ex.Message}, Tipo: {ex.StripeError?.Type}");
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Error general al crear suscripción de recarga mensual: {ex.Message}");
+                    throw;
+                }
+            });
+        }
+
         public async Task<Stripe.Checkout.Session> ObtenerDetallesSesion(string sessionId)
         {
             var policyContext = new Polly.Context
@@ -1286,6 +1510,81 @@ namespace TelefonicaEmpresarial.Services
         },
         policyContext
     );
+        }
+        public async Task<string> CrearSuscripcionConPeriodo(string customerId, string nombrePlan, decimal montoPlan, int periodoMeses)
+        {
+            return await _retryPolicy.ExecuteAsync(async () =>
+            {
+                try
+                {
+                    _logger.LogInformation($"Creando suscripción para cliente {customerId}: {nombrePlan} con periodo de {periodoMeses} meses");
+
+                    // Crear producto
+                    var productoService = new ProductService();
+                    var producto = await productoService.CreateAsync(new ProductCreateOptions
+                    {
+                        Name = nombrePlan,
+                        Description = $"Suscripción por {periodoMeses} meses"
+                    });
+
+                    // Crear precio con intervalo correcto
+                    var precioService = new PriceService();
+                    var intervalCount = periodoMeses;
+                    var interval = "month";
+
+                    // Para periodos largos, podemos usar intervalos de año si es múltiplo de 12
+                    if (periodoMeses == 12)
+                    {
+                        interval = "year";
+                        intervalCount = 1;
+                    }
+
+                    var precio = await precioService.CreateAsync(new PriceCreateOptions
+                    {
+                        Product = producto.Id,
+                        UnitAmount = (long)(montoPlan * 100), // Convertir a centavos
+                        Currency = "mxn",
+                        Recurring = new PriceRecurringOptions
+                        {
+                            Interval = interval,
+                            IntervalCount = intervalCount
+                        }
+                    });
+
+                    // Crear suscripción
+                    var suscripcionService = new SubscriptionService();
+                    var suscripcion = await suscripcionService.CreateAsync(new SubscriptionCreateOptions
+                    {
+                        Customer = customerId,
+                        Items = new List<SubscriptionItemOptions>
+                {
+                    new SubscriptionItemOptions
+                    {
+                        Price = precio.Id
+                    }
+                },
+                        Metadata = new Dictionary<string, string>
+                {
+                    { "PeriodoMeses", periodoMeses.ToString() },
+                    { "NombrePlan", nombrePlan }
+                }
+                    });
+
+                    _logger.LogInformation($"Suscripción creada. ID: {suscripcion.Id}");
+
+                    return suscripcion.Id;
+                }
+                catch (StripeException ex)
+                {
+                    _logger.LogError($"Error de Stripe al crear suscripción con periodo: {ex.Message}");
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Error general al crear suscripción con periodo: {ex.Message}");
+                    throw;
+                }
+            });
         }
     }
 

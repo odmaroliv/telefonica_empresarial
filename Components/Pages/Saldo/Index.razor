@@ -147,21 +147,34 @@
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Monto a recargar (MXN)</label>
                     <div class="grid grid-cols-3 gap-2 mb-4">
-                        <button @onclick="() => montoRecarga = 100" class="@(montoRecarga == 100 ? "bg-blue-100 border-blue-500" : "bg-gray-50 border-gray-200") border-2 rounded p-2 text-center hover:bg-blue-50">
-                            $100
+                        <button @onclick="() => montoRecarga = 120" class="@(montoRecarga == 120 ? "bg-blue-100 border-blue-500" : "bg-gray-50 border-gray-200") border-2 rounded p-2 text-center hover:bg-blue-50">
+                            $120
                         </button>
-                        <button @onclick="() => montoRecarga = 200" class="@(montoRecarga == 200 ? "bg-blue-100 border-blue-500" : "bg-gray-50 border-gray-200") border-2 rounded p-2 text-center hover:bg-blue-50">
-                            $200
+                        <button @onclick="() => montoRecarga = 240" class="@(montoRecarga == 240 ? "bg-blue-100 border-blue-500" : "bg-gray-50 border-gray-200") border-2 rounded p-2 text-center hover:bg-blue-50">
+                            $240
                         </button>
                         <button @onclick="() => montoRecarga = 500" class="@(montoRecarga == 500 ? "bg-blue-100 border-blue-500" : "bg-gray-50 border-gray-200") border-2 rounded p-2 text-center hover:bg-blue-50">
                             $500
                         </button>
                     </div>
-                    <input type="number" @bind="montoRecarga" min="50" step="10" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Monto personalizado" />
+                    <input type="number" @bind="montoRecarga" min="120" step="10" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Monto personalizado" />
                     @if (!string.IsNullOrEmpty(errorRecarga))
                     {
                         <p class="mt-1 text-sm text-red-600">@errorRecarga</p>
                     }
+
+                    <div class="mt-4">
+                        <div class="flex items-center">
+                            <input id="recarga-recurrente" type="checkbox" @bind="recargaRecurrente" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
+                            <label for="recarga-recurrente" class="ml-2 block text-sm text-gray-700">
+                                Recargar automáticamente este monto cada mes
+                            </label>
+                        </div>
+                        @if (recargaRecurrente)
+                        {
+                            <p class="mt-1 text-xs text-gray-500">Tu tarjeta será cargada mensualmente por el monto seleccionado. Puedes cancelar en cualquier momento.</p>
+                        }
+                    </div>
                 </div>
                 <div class="mt-6 flex justify-end space-x-3">
                     <button @onclick="OcultarModalRecarga" class="px-4 py-2 bg-gray-200 text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">
@@ -188,8 +201,9 @@
 
     // Variables para recarga
     private bool mostrarModalRecarga = false;
-    private decimal montoRecarga = 100;
+    private decimal montoRecarga = 120; // Cambiado de 100 a 120
     private string errorRecarga = "";
+    private bool recargaRecurrente = true; // Nueva variable para recarga recurrente, activada por defecto
 
     [Inject]
     private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
@@ -304,8 +318,9 @@
 
     private void MostrarModalRecarga()
     {
-        montoRecarga = 100;
+        montoRecarga = 120; // Cambiado de 100 a 120
         errorRecarga = "";
+        recargaRecurrente = true; // Por defecto se activa la recarga recurrente
         mostrarModalRecarga = true;
     }
 
@@ -316,9 +331,9 @@
 
     private async Task ProcesarRecarga()
     {
-        if (montoRecarga < 50)
+        if (montoRecarga < 120) // Cambiado de 50 a 120
         {
-            errorRecarga = "El monto mínimo de recarga es $50 MXN";
+            errorRecarga = "El monto mínimo de recarga es $120 MXN";
             return;
         }
 
@@ -342,7 +357,18 @@
             }
 
             // Crear sesión de checkout para recarga
-            var session = await StripeService.CrearSesionRecarga(user.StripeCustomerId, montoRecarga);
+            StripeCheckoutSession session;
+
+            if (recargaRecurrente)
+            {
+                // Crear una suscripción recurrente para recargas automáticas
+                session = await StripeService.CrearSuscripcionRecargaSaldo(user.StripeCustomerId, montoRecarga);
+            }
+            else
+            {
+                // Crear una recarga única como antes
+                session = await StripeService.CrearSesionRecarga(user.StripeCustomerId, montoRecarga);
+            }
 
             if (session != null && !string.IsNullOrEmpty(session.Url))
             {
