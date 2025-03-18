@@ -839,13 +839,13 @@ namespace TelefonicaEmpresaria.Services
 
                 foreach (var llamada in llamadasActivas)
                 {
-                    // Calcular duración actual
+                    // Calcular duración actual en tiempo real
                     TimeSpan duracionActual = DateTime.UtcNow - llamada.FechaInicio;
                     int segundos = (int)duracionActual.TotalSeconds;
 
-                    // Calcular el costo de la llamada
+                    // Calcular el costo de la llamada usando la duración actual
                     string paisDestino = ObtenerPaisDesdeNumero(llamada.NumeroDestino);
-                    decimal costoLlamada = await CalcularCostoLlamadaReal(paisDestino, llamada.Duracion.Value);
+                    decimal costoLlamada = await CalcularCostoLlamadaReal(paisDestino, segundos); // CORREGIDO
 
                     // Verificar saldo disponible
                     var saldo = await _context.SaldosCuenta
