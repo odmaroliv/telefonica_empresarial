@@ -216,9 +216,9 @@
 
 
                 <div class="mt-6 flex items-center">
-                    <button @onclick="ComprarNumero" 
+                    <button @onclick="ComprarNumero"
                             class="w-full px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled="@cargandoCompra">
+                            disabled="@(cargandoCompra || saldoUsuario < (habilitarSMS ? (costoNumero + costoSMS) : costoNumero))">
                         @if (cargandoCompra)
                         {
                             <span class="inline-flex items-center">
@@ -228,6 +228,10 @@
                                 </svg>
                                 Procesando...
                             </span>
+                        }
+                        else if (saldoUsuario < (habilitarSMS ? (costoNumero + costoSMS) : costoNumero))
+                        {
+                            <span>Recargar saldo</span>
                         }
                         else
                         {
@@ -437,10 +441,18 @@
         }
     }
 
-    // Actualiza el método ComprarNumero en Comprar.razor
+    
 
     private async Task ComprarNumero()
     {
+        // Si no hay saldo suficiente, redirigir a la página de recarga
+        decimal costoTotal = habilitarSMS ? (costoNumero + costoSMS) : costoNumero;
+        if (saldoUsuario < costoTotal)
+        {
+            NavigationManager.NavigateTo("/saldo");
+            return;
+        }
+
         if (user == null || numeroSeleccionado == null)
         {
             Logger.LogWarning("Intento de compra sin usuario o número seleccionado");
@@ -465,10 +477,8 @@
 
         try
         {
-            Logger.LogInformation($"Iniciando compra de número {numeroSeleccionado.Number} para usuario {user.Id}");
-
-            // Usando el nuevo método IniciarCompraNumero que prepara la compra pero no la completa
-            var (numeroId, stripeSessionId, error) = await TelefonicaService.IniciarCompraNumero(
+            // Usar el método ComprarNumero que ya verifica y descuenta el saldo
+            var (numeroComprado, error) = await TelefonicaService.ComprarNumero(
                 user,
                 numeroSeleccionado.Number,
                 numeroRedireccion,
@@ -476,36 +486,19 @@
 
             if (!string.IsNullOrEmpty(error))
             {
-                Logger.LogError($"Error al iniciar compra: {error}");
+                Logger.LogError($"Error al comprar número: {error}");
                 await JSRuntime.InvokeVoidAsync("alert", $"Error: {error}");
                 return;
             }
 
-            if (numeroId.HasValue && !string.IsNullOrEmpty(stripeSessionId))
+            if (numeroComprado != null)
             {
-                Logger.LogInformation($"Compra iniciada correctamente. NumeroId: {numeroId}, SessionId: {stripeSessionId}");
+                // Actualizar el saldo en la UI
+                saldoUsuario = await SaldoService.ObtenerSaldoUsuario(user.Id);
 
-                // Guardar el ID del número en la sesión para recuperarlo en la página de éxito
-                await SessionStorage.SetAsync("NumeroId", numeroId.Value);
-
-                // AQUÍ ESTÁ EL CAMBIO: Usa la instancia inyectada de StripeService
-                string? checkoutUrl = await StripeService.ObtenerURLPago(stripeSessionId);
-
-                if (!string.IsNullOrEmpty(checkoutUrl))
-                {
-                    NavigationManager.NavigateTo(checkoutUrl);
-                    return;
-                }
-                else
-                {
-                    Logger.LogError($"No se pudo obtener URL de checkout para sesión {stripeSessionId}");
-                    await JSRuntime.InvokeVoidAsync("alert", "Error al obtener la página de pago. Intenta nuevamente.");
-                }
-            }
-            else
-            {
-                Logger.LogError("No se recibió ID de número o sesión válidos");
-                await JSRuntime.InvokeVoidAsync("alert", "Error al procesar la compra. Intenta nuevamente.");
+                // Redirigir al dashboard o página de éxito
+                NavigationManager.NavigateTo($"/numeros/detalle/{numeroComprado.Id}");
+                return;
             }
         }
         catch (Exception ex)
@@ -518,8 +511,6 @@
             cargandoCompra = false;
         }
     }
-
-
 
     private void Regresar()
     {

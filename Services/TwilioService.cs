@@ -17,6 +17,7 @@ namespace TelefonicaEmpresarial.Services
         Task<decimal> ObtenerCostoNumero(string numero);
         Task<decimal> ObtenerCostoSMS();
         Task<List<PaisDisponible>> ObtenerPaisesDisponibles();
+        Task<bool> VerificarNumeroActivo(string sid);
 
     }
 
@@ -639,6 +640,35 @@ namespace TelefonicaEmpresarial.Services
             };
 
             return precios.ContainsKey(codigoPais) ? precios[codigoPais] : 12.0m;
+        }
+
+        public async Task<bool> VerificarNumeroActivo(string sid)
+        {
+            try
+            {
+                _logger.LogInformation($"Verificando si el número con SID {sid} sigue activo en Twilio");
+
+                if (string.IsNullOrEmpty(sid) || sid == "pendiente" || sid == "liberado")
+                {
+                    return false;
+                }
+
+                // Usar el método correcto de la API de Twilio
+                var phoneNumber = await IncomingPhoneNumberResource.FetchAsync(sid);
+
+                // Si obtenemos el número sin excepciones, está activo
+                return phoneNumber != null;
+            }
+            catch (Twilio.Exceptions.ApiException ex)
+            {
+                _logger.LogWarning($"Número con SID {sid} no encontrado en Twilio: {ex.Message}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al verificar número en Twilio: {ex.Message}");
+                return false;
+            }
         }
 
         private async Task<string> ObtenerDireccionEmergencia()

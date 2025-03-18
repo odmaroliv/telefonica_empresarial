@@ -204,6 +204,21 @@ builder.Services.AddQuartz(q =>
         .WithIdentity("RenovacionNumeros-Trigger")
         .WithCronSchedule("0 0 2 * * ?")); // Ejecutar a las 2 AM todos los días
 
+    // Agregar un trigger adicional para procesamiento de lotes durante el día
+    q.AddTrigger(opts => opts
+        .ForJob(renovacionJobKey)
+        .WithIdentity("RenovacionNumeros-Lotes-Trigger")
+        .WithCronSchedule("0 0/30 9-22 * * ?")); // Cada 30 minutos entre 9 AM y 10 PM
+
+    // Registrar el nuevo job de reactivación
+    var reactivacionJobKey = new JobKey("ReactivacionNumeros");
+    q.AddJob<ReactivacionNumerosJob>(opts => opts.WithIdentity(reactivacionJobKey));
+    q.AddTrigger(opts => opts
+        .ForJob(reactivacionJobKey)
+        .WithIdentity("ReactivacionNumeros-Trigger")
+        .WithCronSchedule("0 15 1,7,13,19 * * ?")); // Ejecutar 4 veces al día (1:15 AM, 7:15 AM, 1:15 PM, 7:15 PM)
+
+
     var llamadasMonitorJobKey = new JobKey("LlamadasMonitorJob");
     q.AddJob<LlamadasMonitorJob>(opts => opts.WithIdentity(llamadasMonitorJobKey));
     q.AddTrigger(opts => opts
@@ -239,8 +254,10 @@ builder.Services.AddAntiforgery(options =>
     options.Cookie.SameSite = SameSiteMode.Strict;
 });
 
-builder.WebHost.UseUrls("http://*:8080");
-
+if (!builder.Environment.IsDevelopment())
+{
+    builder.WebHost.UseUrls("http://*:8080");
+}
 // Crear una política de autorización para health checks
 builder.Services.AddAuthorization(options =>
 {

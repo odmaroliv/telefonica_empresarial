@@ -25,7 +25,7 @@ namespace TelefonicaEmpresarial.Services
             bool habilitarSMS,
             string sessionId,
             string? subscriptionId);
-
+        Task<bool> VerificarNumeroActivo(string plivoUuid);
         Task<Transaccion?> ObtenerTransaccionPorSesion(string sessionId);
         Task<List<TwilioNumeroDisponible>> ObtenerNumerosDisponibles(string pais = "MX", int limite = 10);
         Task<(NumeroTelefonico? Numero, string Error)> ComprarNumero(ApplicationUser usuario, string numero, string numeroRedireccion, bool habilitarSMS);
@@ -942,6 +942,30 @@ namespace TelefonicaEmpresarial.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error al configurar número adquirido ID {numeroId}");
+                return false;
+            }
+        }
+        public async Task<bool> VerificarNumeroActivo(string plivoUuid)
+        {
+            try
+            {
+                _logger.LogInformation($"Verificando si el número con PlivoUuid {plivoUuid} sigue activo en Twilio");
+
+                // Si el número tiene un estado especial, retornar false
+                if (string.IsNullOrEmpty(plivoUuid) ||
+                    plivoUuid == "pendiente" ||
+                    plivoUuid == "liberado")
+                {
+                    return false;
+                }
+
+                // Delegar la verificación al servicio de Twilio
+                return await _twilioService.VerificarNumeroActivo(plivoUuid);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al verificar número en Twilio: {ex.Message}");
+                // Por seguridad, asumimos que el número no está activo en caso de error
                 return false;
             }
         }
