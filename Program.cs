@@ -87,7 +87,7 @@ builder.Services.AddHealthChecksUI(options =>
 {
     options.SetEvaluationTimeInSeconds(60);
     options.MaximumHistoryEntriesPerEndpoint(10);
-    options.AddHealthCheckEndpoint("API", "/healthz"); // Usamos un endpoint especial para el monitoreo
+    options.AddHealthCheckEndpoint("API", "http://localhost:8080/healthz"); // Usamos un endpoint especial para el monitoreo
 
 })
 .AddInMemoryStorage();
