@@ -45,7 +45,62 @@
         <div class="bg-white rounded-lg shadow-md p-6 mb-8">
             <h2 class="text-xl font-semibold mb-6 text-gray-800">Número: @FormatearNumero(numero.Numero)</h2>
 
-            <div class="mb-8">
+            <!-- Configuración de servicios de llamada -->
+            <div class="mb-8 border-b pb-6">
+                <h3 class="text-lg font-medium mb-4">Servicios de Llamada</h3>
+
+                <!-- Llamadas entrantes -->
+                <div class="mb-5 bg-gray-50 p-4 rounded-lg">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-800 font-medium">Llamadas Entrantes</p>
+                            <p class="text-sm text-gray-500">Permite recibir llamadas y redirigirlas a tu teléfono</p>
+                            <p class="text-xs text-gray-400 mt-1">Nota: Las llamadas entrantes generan cargos incluso si no son contestadas</p>
+                        </div>
+                        <div class="ml-4">
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" @bind="llamadasEntrantes" class="sr-only peer">
+                                <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Llamadas salientes -->
+                <div class="mb-5 bg-gray-50 p-4 rounded-lg">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-800 font-medium">Llamadas Salientes</p>
+                            <p class="text-sm text-gray-500">Permite realizar llamadas desde la plataforma usando este número como identificador</p>
+                        </div>
+                        <div class="ml-4">
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" @bind="llamadasSalientes" class="sr-only peer">
+                                <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <button @onclick="ActualizarConfiguracionLlamadas" class="mt-3 inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled="@cargandoConfiguracionLlamadas">
+                    @if (cargandoConfiguracionLlamadas)
+                    {
+                        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Actualizando...</span>
+                    }
+                    else
+                    {
+                        <span>Actualizar Configuración de Llamadas</span>
+                    }
+                </button>
+            </div>
+
+            <!-- Configuración de Redirección -->
+            <div class="mb-8 border-b pb-6">
                 <h3 class="text-lg font-medium mb-4">Configuración de Redirección</h3>
                 <div class="mb-6">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Número a redireccionar</label>
@@ -72,7 +127,8 @@
                 </button>
             </div>
 
-            <div class="border-t pt-6">
+            <!-- Servicio SMS -->
+            <div>
                 <h3 class="text-lg font-medium mb-4">Servicio SMS</h3>
                 <div class="bg-gray-50 p-4 rounded-lg mb-6">
                     <div class="flex items-center justify-between">
@@ -142,6 +198,27 @@
                 }
             </div>
         </div>
+
+        <!-- Información adicional -->
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="ml-3 flex-1">
+                    <h3 class="text-sm font-medium text-blue-800">Información sobre servicios</h3>
+                    <div class="mt-2 text-sm text-blue-700">
+                        <ul class="list-disc pl-5 space-y-1">
+                            <li>Desactivar las llamadas entrantes evita cargos por llamadas no contestadas.</li>
+                            <li>El servicio de SMS puede seguir funcionando incluso con las llamadas desactivadas.</li>
+                            <li>Ideal para usuarios que solo necesitan el número para verificación en WhatsApp Business u otros servicios.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
     }
 </div>
 
@@ -154,6 +231,11 @@
     private string errorRedireccion = "";
     private bool cargandoRedireccion = false;
     private bool cargandoSMS = false;
+    private bool cargandoConfiguracionLlamadas = false;
+
+    // Variables para configuración de llamadas
+    private bool llamadasEntrantes = true;
+    private bool llamadasSalientes = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -170,6 +252,15 @@
         }
 
         numeroRedireccion = numero.NumeroRedireccion;
+
+        // Establecer valores iniciales para las opciones de llamadas
+        // Si tu modelo ya tiene estas propiedades:
+        llamadasEntrantes = numero.LlamadasEntrantes;
+        llamadasSalientes = numero.LlamadasSalientes;
+
+        // Si no has implementado aún las propiedades en tu modelo, establece valores por defecto:
+        // llamadasEntrantes = true;
+        // llamadasSalientes = true;
     }
 
     private async Task ActualizarRedireccion()
@@ -206,6 +297,29 @@
         finally
         {
             cargandoRedireccion = false;
+        }
+    }
+
+    private async Task ActualizarConfiguracionLlamadas()
+    {
+        cargandoConfiguracionLlamadas = true;
+        try
+        {
+            // Llamar al nuevo método del servicio
+            var resultado = await TelefonicaService.ActualizarConfiguracionLlamadas(Id, llamadasEntrantes, llamadasSalientes);
+            if (resultado)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Configuración de llamadas actualizada correctamente");
+                await CargarNumero();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo actualizar la configuración de llamadas. Intente nuevamente.");
+            }
+        }
+        finally
+        {
+            cargandoConfiguracionLlamadas = false;
         }
     }
 

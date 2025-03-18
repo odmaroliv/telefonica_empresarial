@@ -93,6 +93,37 @@ namespace TelefonicaEmpresarial.Controllers
                 return Content(response.ToString(), "application/xml");
             }
         }
+        [HttpPost("reject-call")]
+        [AllowAnonymous]
+        public IActionResult RejectCall()
+        {
+            try
+            {
+                _logger.LogInformation("Rechazando llamada entrante automáticamente");
+
+                // Crear respuesta TwiML que rechaza la llamada
+                var response = new VoiceResponse();
+
+                // Opción 1: Rechazar directamente (cuelga sin tono)
+                response.Reject();
+
+                // Reproducir mensaje y colgar
+                // response.Say("Este número no acepta llamadas entrantes", voice: "alice", language: "es-MX");
+                // response.Hangup();
+
+                _logger.LogInformation("Llamada rechazada");
+                return Content(response.ToString(), "application/xml");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al rechazar llamada");
+
+                // En caso de error, igualmente rechazamos la llamada
+                var errorResponse = new VoiceResponse();
+                errorResponse.Reject();
+                return Content(errorResponse.ToString(), "application/xml");
+            }
+        }
         private bool ValidateTwilioSignature()
         {
             try
@@ -116,5 +147,6 @@ namespace TelefonicaEmpresarial.Controllers
                 return false;
             }
         }
+
     }
 }

@@ -49,6 +49,7 @@ namespace TelefonicaEmpresarial.Services
         Task<bool> VerificarSaldoParaCompra(string userId, string numero, bool smsHabilitado);
         Task<bool> DescontarSaldoMensual(NumeroTelefonico numero);
         Task<bool> ProcesarConsumoLlamada(NumeroTelefonico numero, LogLlamada logLlamada);
+        Task<bool> ActualizarConfiguracionLlamadas(int numeroId, bool llamadasEntrantes, bool llamadasSalientes);
 
     }
 
@@ -60,19 +61,22 @@ namespace TelefonicaEmpresarial.Services
         private readonly ILogger<TelefonicaService> _logger;
         private readonly AsyncRetryPolicy _retryPolicy;
         private readonly ISaldoService _saldoService;
+        private readonly IConfiguration _configuration;
 
         public TelefonicaService(
             ApplicationDbContext context,
             ITwilioService twilioService,
             IStripeService stripeService,
             ILogger<TelefonicaService> logger,
-            ISaldoService saldoService)
+            ISaldoService saldoService,
+            IConfiguration configuration)
         {
             _context = context;
             _twilioService = twilioService;
             _stripeService = stripeService;
             _logger = logger;
             _saldoService = saldoService;
+            _configuration = configuration;
 
             // Configurar política de reintentos para operaciones de base de datos
             _retryPolicy = Polly.Policy
@@ -106,6 +110,8 @@ namespace TelefonicaEmpresarial.Services
                 throw;
             }
         }
+        // En TelefonicaService.cs
+
 
         public async Task<(decimal CostoNumero, decimal CostoSMS)> ObtenerCostos(string numeroSeleccionado)
         {
@@ -1099,6 +1105,88 @@ namespace TelefonicaEmpresarial.Services
             {
                 _logger.LogError(ex, $"Error en proceso de compra con periodo: {ex.Message}");
                 return (null, $"Error al comprar número: {ex.Message}");
+            }
+        }
+        public async Task<bool> ActualizarConfiguracionLlamadas(int numeroId, bool llamadasEntrantes, bool llamadasSalientes)
+        {
+            try
+            {
+                _logger.LogInformation($"Actualizando configuración de llamadas para número ID {numeroId}: Entrantes={llamadasEntrantes}, Salientes={llamadasSalientes}");
+
+                var numero = await _retryPolicy.ExecuteAsync(async () =>
+                    await _context.NumerosTelefonicos.FindAsync(numeroId)
+                );
+
+                if (numero == null || !numero.Activo)
+                {
+                    _logger.LogWarning($"No se encontró número activo con ID {numeroId}");
+                    return false;
+                }
+
+                // Guardar la configuración anterior para detectar cambios
+                bool llamadasEntrantesAntes = numero.LlamadasEntrantes;
+
+                // Actualizar configuración en la base de datos
+                numero.LlamadasEntrantes = llamadasEntrantes;
+                numero.LlamadasSalientes = llamadasSalientes;
+
+                // Si se desactivan las llamadas entrantes (y antes estaban activas), configurar para rechazar llamadas en Twilio
+                if (!llamadasEntrantes && llamadasEntrantesAntes && !string.IsNullOrEmpty(numero.PlivoUuid) && numero.PlivoUuid != "pendiente")
+                {
+                    // Configurar Twilio para rechazar llamadas entrantes
+                    await ConfigurarRechazarLlamadasTwilio(numero.PlivoUuid);
+                }
+                // Si se activan las llamadas entrantes (y antes estaban desactivadas) y hay un número de redirección
+                else if (llamadasEntrantes && !llamadasEntrantesAntes && !string.IsNullOrEmpty(numero.NumeroRedireccion) && numero.NumeroRedireccion != "pendiente")
+                {
+                    // Restaurar redirección en Twilio
+                    await _twilioService.ConfigurarRedireccion(numero.PlivoUuid, numero.NumeroRedireccion);
+                }
+
+                await _retryPolicy.ExecuteAsync(async () =>
+                {
+                    await _context.SaveChangesAsync();
+                });
+
+                _logger.LogInformation($"Configuración de llamadas actualizada correctamente para número ID {numeroId}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al actualizar configuración de llamadas para número {numeroId}");
+                return false;
+            }
+        }
+
+        // Método auxiliar para configurar Twilio para rechazar llamadas entrantes
+        private async Task<bool> ConfigurarRechazarLlamadasTwilio(string twilioSid)
+        {
+            try
+            {
+                _logger.LogInformation($"Configurando Twilio para rechazar llamadas en número {twilioSid}");
+
+                // Construir la URL del endpoint que rechaza llamadas
+                var appDomain = _configuration["AppUrl"] ?? "https://localhost:7019";
+                var rejectCallUrl = $"{appDomain}/api/twilio/reject-call";
+
+                // Utilizar el servicio de Twilio para actualizar la configuración
+                var resultado = await _twilioService.ConfigurarURLRechazo(twilioSid, rejectCallUrl);
+
+                if (resultado)
+                {
+                    _logger.LogInformation($"Configuración de rechazo de llamadas aplicada correctamente para {twilioSid}");
+                    return true;
+                }
+                else
+                {
+                    _logger.LogWarning($"No se pudo configurar el rechazo de llamadas para {twilioSid}");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al configurar rechazo de llamadas en Twilio para {twilioSid}");
+                return false;
             }
         }
     }

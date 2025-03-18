@@ -50,21 +50,27 @@ namespace TelefonicaEmpresarial.Controllers
                 }
 
                 // Convertir duración de string a int si está presente
-                // Solo calcular costos cuando el estado es "completed"
+                int? duracion = null;
+                if (!string.IsNullOrEmpty(callEvent.CallDuration) &&
+                    int.TryParse(callEvent.CallDuration, out int duracionParsed))
+                {
+                    duracion = duracionParsed;
+                }
+
+                // Determinar si la llamada fue contestada o no
                 if (callEvent.CallStatus == "completed")
                 {
-                    // La duración reportada por Twilio es la fuente de verdad
-                    int? duracion = null;
-                    if (!string.IsNullOrEmpty(callEvent.CallDuration) &&
-                        int.TryParse(callEvent.CallDuration, out int duracionParsed))
-                    {
-                        duracion = duracionParsed;
-                    }
-
-                    // Llamar a un método específico para procesar finalizaciones
+                    // Llamada completada (contestada)
                     await _llamadasService.ProcesarFinalizacionLlamada(
                         callEvent.CallSid,
                         duracion
+                    );
+                }
+                else if (callEvent.CallStatus == "no-answer" || callEvent.CallStatus == "busy" || callEvent.CallStatus == "failed")
+                {
+                    // Llamada no contestada, ocupada o fallida
+                    await _llamadasService.ProcesarFinalizacionLlamadaNoContestada(
+                        callEvent.CallSid
                     );
                 }
                 else

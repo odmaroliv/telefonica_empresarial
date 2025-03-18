@@ -18,6 +18,13 @@ namespace TelefonicaEmpresaria.Services
     /// </summary>
     public interface ILlamadasService
     {
+
+        /// <summary>
+        /// Procesa la finalización de una llamada no contestada
+        /// </summary>
+        /// <param name="twilioCallSid">SID de la llamada en Twilio</param>
+        /// <returns>True si se procesó correctamente, False en caso contrario</returns>
+        Task<bool> ProcesarFinalizacionLlamadaNoContestada(string twilioCallSid);
         Task VerificarSaldoLlamadasActivas();
         Task FinalizarLlamadasAbandonadas();
         Task ProcesarFinalizacionLlamada(string twilioCallSid, int? duracion);
@@ -565,15 +572,25 @@ namespace TelefonicaEmpresaria.Services
                 llamada.Estado = nuevoEstado;
 
                 // Si la llamada ha finalizado, actualizar la fecha de fin y la duración
-                if (nuevoEstado == "completada" || nuevoEstado == "fallida" || nuevoEstado == "cancelada")
+                if (nuevoEstado == "completada" || nuevoEstado == "fallida" || nuevoEstado == "no-contestada" || nuevoEstado == "cancelada")
                 {
                     llamada.FechaFin = DateTime.UtcNow;
-                    llamada.Duracion = duracion ?? (int)(llamada.FechaFin.Value - llamada.FechaInicio).TotalSeconds;
 
-                    // Procesar el consumo si no se ha hecho ya
-                    if (!llamada.ConsumoRegistrado)
+                    // Solo establecer duración si fue contestada
+                    if (nuevoEstado == "completada" && duracion.HasValue)
                     {
-                        await ProcesarConsumoLlamada(llamada);
+                        llamada.Duracion = duracion;
+
+                        // Procesar el consumo solo si fue contestada y tiene duración
+                        if (!llamada.ConsumoRegistrado)
+                        {
+                            await ProcesarConsumoLlamada(llamada);
+                        }
+                    }
+                    else if (nuevoEstado == "no-contestada")
+                    {
+                        // Para llamadas no contestadas, cobra una tarifa mínima o no cobra según tu política
+                        await ProcesarConsumoLlamadaNoContestada(llamada);
                     }
                 }
 
@@ -585,6 +602,88 @@ namespace TelefonicaEmpresaria.Services
             {
                 _logger.LogError(ex, $"Error al actualizar estado de llamada {llamada.Id} desde Twilio");
                 return false;
+            }
+        }
+
+        private async Task<bool> ProcesarConsumoLlamadaNoContestada(LlamadaSaliente llamada)
+        {
+            try
+            {
+                // Si ya se procesó el consumo, no hacerlo de nuevo
+                if (llamada.ConsumoRegistrado)
+                {
+                    return true;
+                }
+
+                // Calcular un costo reducido para llamadas no contestadas
+                decimal costoReducido = await CalcularCostoLlamadaNoContestada(llamada.NumeroDestino);
+
+                // Solo cobrar si la política lo permite
+                if (costoReducido > 0)
+                {
+                    // Establecer el costo
+                    llamada.Costo = costoReducido;
+
+                    // Concepto para el movimiento
+                    string concepto = $"Intento de llamada a {llamada.NumeroDestino} (no contestada) - ID:{llamada.Id}";
+
+                    // Descontar del saldo
+                    bool saldoDescontado = await _saldoService.DescontarSaldo(
+                        llamada.UserId,
+                        costoReducido,
+                        concepto,
+                        llamada.NumeroTelefonicoId
+                    );
+
+                    if (!saldoDescontado)
+                    {
+                        _logger.LogWarning($"No se pudo descontar saldo para la llamada no contestada {llamada.Id}");
+                        return false;
+                    }
+                }
+
+                // Marcar la llamada como procesada
+                llamada.ConsumoRegistrado = true;
+                llamada.FechaProcesamientoConsumo = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al procesar consumo de llamada no contestada {llamada.Id}");
+                return false;
+            }
+        }
+
+        private async Task<decimal> CalcularCostoLlamadaNoContestada(string numeroDestino)
+        {
+            try
+            {
+                // Obtener configuración de política de cobro
+                var configuracion = await _context.ConfiguracionesSistema
+                    .Where(c => c.Clave == "CobrarLlamadasNoContestadas")
+                    .Select(c => c.Valor)
+                    .FirstOrDefaultAsync();
+
+                // Si la política es no cobrar
+                if (configuracion?.ToLower() == "false")
+                {
+                    return 0;
+                }
+
+                // Obtener un costo mínimo para llamadas no contestadas
+                var costoMinimo = await _context.ConfiguracionesSistema
+                    .Where(c => c.Clave == "CostoMinimoLlamadaNoContestada")
+                    .Select(c => decimal.Parse(c.Valor))
+                    .FirstOrDefaultAsync();
+
+                return costoMinimo;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al calcular costo de llamada no contestada");
+                return 1.0m; // Valor por defecto conservador
             }
         }
 
@@ -601,7 +700,7 @@ namespace TelefonicaEmpresaria.Services
                 "completed" => "completada",
                 "busy" => "fallida",
                 "failed" => "fallida",
-                "no-answer" => "fallida",
+                "no-answer" => "no-contestada",
                 "canceled" => "cancelada",
                 _ => "en-curso"
             };
@@ -871,6 +970,87 @@ namespace TelefonicaEmpresaria.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al verificar saldo de llamadas activas");
+            }
+        }
+        public async Task<bool> ProcesarFinalizacionLlamadaNoContestada(string twilioCallSid)
+        {
+            try
+            {
+                var llamada = await _context.LlamadasSalientes
+                    .FirstOrDefaultAsync(l => l.TwilioCallSid == twilioCallSid);
+
+                if (llamada == null)
+                {
+                    _logger.LogWarning($"No se encontró llamada con SID: {twilioCallSid} para procesar como no contestada");
+                    return false;
+                }
+
+                // Determinar el estado final
+                string estadoFinal = "no-contestada";
+
+                // Actualizar estado y fecha de fin
+                llamada.Estado = estadoFinal;
+                llamada.FechaFin = DateTime.UtcNow;
+                llamada.Duracion = 0; // Sin duración
+
+                // Verificar si debemos cobrar por llamadas no contestadas
+                var configuracion = await _context.ConfiguracionesSistema
+                    .Where(c => c.Clave == "CobrarLlamadasNoContestadas")
+                    .Select(c => c.Valor)
+                    .FirstOrDefaultAsync();
+
+                bool cobrarLlamadasNoContestadas = configuracion?.ToLower() == "true";
+
+                if (cobrarLlamadasNoContestadas)
+                {
+                    // Obtener una tarifa mínima para llamadas no contestadas
+                    var costoMinimo = await _context.ConfiguracionesSistema
+                        .Where(c => c.Clave == "CostoMinimoLlamadaNoContestada")
+                        .Select(c => decimal.Parse(c.Valor))
+                        .FirstOrDefaultAsync();
+
+                    decimal costoReal = costoMinimo > 0 ? costoMinimo : 2.0m; // Valor por defecto si no hay configuración
+
+                    llamada.Costo = costoReal;
+
+                    // Registrar el consumo con costo reducido
+                    if (!llamada.ConsumoRegistrado)
+                    {
+                        string concepto = $"Intento de llamada a {llamada.NumeroDestino} (no contestada) - ID:{llamada.Id}";
+
+                        bool saldoDescontado = await _saldoService.DescontarSaldo(
+                            llamada.UserId,
+                            costoReal,
+                            concepto,
+                            llamada.NumeroTelefonicoId
+                        );
+
+                        if (saldoDescontado)
+                        {
+                            llamada.ConsumoRegistrado = true;
+                            llamada.FechaProcesamientoConsumo = DateTime.UtcNow;
+                        }
+                        else
+                        {
+                            _logger.LogWarning($"No se pudo descontar saldo para la llamada no contestada {llamada.Id}");
+                        }
+                    }
+                }
+                else
+                {
+                    // Si la política es no cobrar, registramos 0 como costo
+                    llamada.Costo = 0;
+                    llamada.ConsumoRegistrado = true;
+                    llamada.FechaProcesamientoConsumo = DateTime.UtcNow;
+                }
+
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al procesar finalización de llamada no contestada con SID {twilioCallSid}");
+                return false;
             }
         }
         public async Task FinalizarLlamadasAbandonadas()

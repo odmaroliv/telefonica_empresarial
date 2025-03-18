@@ -46,6 +46,9 @@ namespace TelefonicaEmpresaria.Models
 
         public decimal? DescuentoAplicado { get; set; }
 
+        public bool LlamadasEntrantes { get; set; } = true;
+        public bool LlamadasSalientes { get; set; } = true;
+
         public virtual ICollection<LogLlamada>? LogsLlamadas { get; set; }
         public virtual ICollection<LogSMS>? LogsSMS { get; set; }
     }

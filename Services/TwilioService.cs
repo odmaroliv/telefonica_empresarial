@@ -18,6 +18,7 @@ namespace TelefonicaEmpresarial.Services
         Task<decimal> ObtenerCostoSMS();
         Task<List<PaisDisponible>> ObtenerPaisesDisponibles();
         Task<bool> VerificarNumeroActivo(string sid);
+        Task<bool> ConfigurarURLRechazo(string twilioSid, string rejectUrl);
 
     }
 
@@ -702,6 +703,72 @@ namespace TelefonicaEmpresarial.Services
                 _logger.LogError(ex, "Error al obtener dirección de emergencia");
                 return string.Empty;
             }
+        }
+
+        public async Task<bool> ConfigurarURLRechazo(string twilioSid, string rejectUrl)
+        {
+            int maxRetries = 3;
+            int currentRetry = 0;
+
+            while (currentRetry < maxRetries)
+            {
+                try
+                {
+                    _logger.LogInformation($"Configurando URL de rechazo para {twilioSid} a {rejectUrl}");
+
+                    // Actualizar el número en Twilio
+                    var updateOptions = new UpdateIncomingPhoneNumberOptions(twilioSid)
+                    {
+                        VoiceUrl = new Uri(rejectUrl),
+                        VoiceMethod = Twilio.Http.HttpMethod.Post
+                    };
+
+                    var updatedNumber = await IncomingPhoneNumberResource.UpdateAsync(updateOptions);
+
+                    if (updatedNumber != null)
+                    {
+                        _logger.LogInformation($"URL de rechazo configurada correctamente para {twilioSid}");
+                        return true;
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"Respuesta nula al configurar URL de rechazo para {twilioSid}");
+                        throw new InvalidOperationException("No se pudo configurar la URL de rechazo: respuesta nula");
+                    }
+                }
+                catch (ApiException apiEx)
+                {
+                    _logger.LogError($"Error de API Twilio al configurar URL de rechazo: {apiEx.Message}");
+
+                    currentRetry++;
+
+                    if (currentRetry < maxRetries)
+                    {
+                        await Task.Delay(1000 * currentRetry);
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"No se pudo configurar la URL de rechazo después de {maxRetries} intentos", apiEx);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Error general al configurar URL de rechazo: {ex.Message}");
+
+                    currentRetry++;
+
+                    if (currentRetry < maxRetries)
+                    {
+                        await Task.Delay(1000 * currentRetry);
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"Error al configurar la URL de rechazo después de {maxRetries} intentos", ex);
+                    }
+                }
+            }
+
+            throw new InvalidOperationException($"No se pudo configurar la URL de rechazo después de {maxRetries} intentos");
         }
     }
 
