@@ -405,21 +405,35 @@ namespace TelefonicaEmpresarial.Services
                     return false;
                 }
 
-                // Actualizar suscripción en Stripe
-                if (!string.IsNullOrEmpty(numero.StripeSubscriptionId))
-                {
-                    var resultadoStripe = await _stripeService.AgregarSMSASuscripcion(
-                        numero.StripeSubscriptionId,
-                        costoSMS);
+                //// Actualizar suscripción en Stripe
+                //if (!string.IsNullOrEmpty(numero.StripeSubscriptionId))
+                //{
+                //    var resultadoStripe = await _stripeService.AgregarSMSASuscripcion(
+                //        numero.StripeSubscriptionId,
+                //        costoSMS);
 
-                    if (!resultadoStripe)
-                    {
-                        // Revertir cambios en Twilio
-                        await _twilioService.DesactivarSMS(numero.PlivoUuid);
-                        _logger.LogWarning($"No se pudo agregar SMS a la suscripción de Stripe para número ID {numeroId}");
-                        return false;
-                    }
+                //    if (!resultadoStripe)
+                //    {
+                //        // Revertir cambios en Twilio
+                //        await _twilioService.DesactivarSMS(numero.PlivoUuid);
+                //        _logger.LogWarning($"No se pudo agregar SMS a la suscripción de Stripe para número ID {numeroId}");
+                //        return false;
+                //    }
+                //}
+
+                string concepto = $"Activación de servicio SMS para número {numero.Numero}";
+                var saldoDescontado = await _saldoService.DescontarSaldo(
+                    numero.UserId,
+                    costoSMS,
+                    concepto,
+                    numero.Id);
+
+                if (!saldoDescontado)
+                {
+                    _logger.LogWarning($"No se pudo descontar el saldo para la activación de SMS del número {numero.Id}");
+                    return false;
                 }
+
 
                 // Actualizar en nuestra base de datos
                 numero.SMSHabilitado = true;
