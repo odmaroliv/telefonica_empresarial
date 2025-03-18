@@ -50,35 +50,14 @@
                 <h3 class="text-lg font-medium mb-4">Servicios de Llamada</h3>
 
                 <!-- Llamadas entrantes -->
-                <div class="mb-5 bg-gray-50 p-4 rounded-lg">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <p class="text-gray-800 font-medium">Llamadas Entrantes</p>
-                            <p class="text-sm text-gray-500">Permite recibir llamadas y redirigirlas a tu teléfono</p>
-                            <p class="text-xs text-gray-400 mt-1">Nota: Las llamadas entrantes generan cargos incluso si no son contestadas</p>
-                        </div>
-                        <div class="ml-4">
-                            <label class="inline-flex items-center cursor-pointer">
-                                <input type="checkbox" @bind="llamadasEntrantes" class="sr-only peer">
-                                <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                            </label>
-                        </div>
+                <div class="flex space-x-4">
+                    <div>
+                        <span class="mr-2">Llamadas Entrantes:</span>
+                        <input type="checkbox" checked="@llamadasEntrantes" @onchange="e => llamadasEntrantes = (bool)e.Value" />
                     </div>
-                </div>
-
-                <!-- Llamadas salientes -->
-                <div class="mb-5 bg-gray-50 p-4 rounded-lg">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <p class="text-gray-800 font-medium">Llamadas Salientes</p>
-                            <p class="text-sm text-gray-500">Permite realizar llamadas desde la plataforma usando este número como identificador</p>
-                        </div>
-                        <div class="ml-4">
-                            <label class="inline-flex items-center cursor-pointer">
-                                <input type="checkbox" @bind="llamadasSalientes" class="sr-only peer">
-                                <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                            </label>
-                        </div>
+                    <div>
+                        <span class="mr-2">Llamadas Salientes:</span>
+                        <input type="checkbox" checked="@llamadasSalientes" @onchange="e => llamadasSalientes = (bool)e.Value" />
                     </div>
                 </div>
 
@@ -258,6 +237,7 @@
         llamadasEntrantes = numero.LlamadasEntrantes;
         llamadasSalientes = numero.LlamadasSalientes;
 
+        Console.WriteLine($"Valores asignados: LlamadasEntrantes={llamadasEntrantes}, LlamadasSalientes={llamadasSalientes}");
         // Si no has implementado aún las propiedades en tu modelo, establece valores por defecto:
         // llamadasEntrantes = true;
         // llamadasSalientes = true;
