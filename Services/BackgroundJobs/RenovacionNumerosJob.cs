@@ -82,25 +82,33 @@ namespace TelefonicaEmpresarial.Services.BackgroundJobs
                         var diasPasados = (fechaHoy - numero.FechaExpiracion).Days;
                         var diasRestantes = DIAS_GRACIA - diasPasados;
 
-                        // Verificar si el usuario tiene saldo suficiente
-                        decimal costoTotal = numero.CostoMensual;
+                        // Calcular costos considerando el periodo contratado
+                        decimal costoMensual = numero.CostoMensual;
                         if (numero.SMSHabilitado && numero.CostoSMS.HasValue)
                         {
-                            costoTotal += numero.CostoSMS.Value;
+                            costoMensual += numero.CostoSMS.Value;
                         }
 
+                        // Recuperar el periodo contratado o usar 1 mes como valor predeterminado
+                        int periodoMeses = numero.PeriodoContratado > 0 ? numero.PeriodoContratado : 1;
+
+                        // Aplicar descuento si existe
+                        decimal descuento = numero.DescuentoAplicado.HasValue ? numero.DescuentoAplicado.Value : 0;
+                        decimal costoTotal = costoMensual * periodoMeses * (1 - descuento);
+
+                        // Verificar si el usuario tiene saldo suficiente
                         bool saldoSuficiente = await saldoService.VerificarSaldoSuficiente(numero.UserId, costoTotal);
 
                         if (saldoSuficiente)
                         {
                             // El usuario ha cargado saldo, renovar el número
-                            await RenovarNumero(numero, costoTotal, saldoService, dbContext);
+                            await RenovarNumero(numero, costoTotal, saldoService, dbContext, periodoMeses);
 
                             // Notificar al usuario que su número ha sido renovado
                             //await notificationService.EnviarNotificacion(
                             //    numero.UserId,
                             //    "Número renovado automáticamente",
-                            //    $"Tu número {numero.Numero} ha sido renovado automáticamente por un mes más.",
+                            //    $"Tu número {numero.Numero} ha sido renovado automáticamente por {periodoMeses} mes(es) más.",
                             //    "success");
                         }
                         else if (diasRestantes <= 0)
@@ -166,25 +174,33 @@ namespace TelefonicaEmpresarial.Services.BackgroundJobs
                 {
                     try
                     {
-                        // Verificar si el usuario tiene saldo suficiente
-                        decimal costoTotal = numero.CostoMensual;
+                        // Calcular costos considerando el periodo contratado
+                        decimal costoMensual = numero.CostoMensual;
                         if (numero.SMSHabilitado && numero.CostoSMS.HasValue)
                         {
-                            costoTotal += numero.CostoSMS.Value;
+                            costoMensual += numero.CostoSMS.Value;
                         }
 
+                        // Recuperar el periodo contratado o usar 1 mes como valor predeterminado
+                        int periodoMeses = numero.PeriodoContratado > 0 ? numero.PeriodoContratado : 1;
+
+                        // Aplicar descuento si existe
+                        decimal descuento = numero.DescuentoAplicado.HasValue ? numero.DescuentoAplicado.Value : 0;
+                        decimal costoTotal = costoMensual * periodoMeses * (1 - descuento);
+
+                        // Verificar si el usuario tiene saldo suficiente
                         bool saldoSuficiente = await saldoService.VerificarSaldoSuficiente(numero.UserId, costoTotal);
 
                         if (saldoSuficiente)
                         {
-                            // Renovar el número por un mes más
-                            await RenovarNumero(numero, costoTotal, saldoService, dbContext);
+                            // Renovar el número por el periodo contratado
+                            await RenovarNumero(numero, costoTotal, saldoService, dbContext, periodoMeses);
 
                             // Notificar al usuario que su número ha sido renovado
                             //await notificationService.EnviarNotificacion(
                             //    numero.UserId,
                             //    "Número renovado automáticamente",
-                            //    $"Tu número {numero.Numero} ha sido renovado automáticamente por un mes más.",
+                            //    $"Tu número {numero.Numero} ha sido renovado automáticamente por {periodoMeses} mes(es) más.",
                             //    "success");
                         }
                         else
@@ -214,11 +230,11 @@ namespace TelefonicaEmpresarial.Services.BackgroundJobs
             }
         }
 
-        private async Task RenovarNumero(NumeroTelefonico numero, decimal costoTotal, ISaldoService saldoService, ApplicationDbContext dbContext)
+        private async Task RenovarNumero(NumeroTelefonico numero, decimal costoTotal, ISaldoService saldoService, ApplicationDbContext dbContext, int periodoMeses)
         {
             try
             {
-                _logger.LogInformation($"Renovando número {numero.Id} ({numero.Numero}) por un mes más");
+                _logger.LogInformation($"Renovando número {numero.Id} ({numero.Numero}) por {periodoMeses} mes(es) más");
 
                 // Utilizar una política de reintentos para operaciones críticas
                 var retryPolicy = Policy
@@ -236,7 +252,7 @@ namespace TelefonicaEmpresarial.Services.BackgroundJobs
                 await retryPolicy.ExecuteAsync(async () =>
                 {
                     // Descontar saldo
-                    string concepto = $"Renovación mensual - Número {numero.Numero}";
+                    string concepto = $"Renovación por {periodoMeses} mes(es) - Número {numero.Numero}";
                     bool saldoDescontado = await saldoService.DescontarSaldo(
                         numero.UserId,
                         costoTotal,
@@ -245,8 +261,8 @@ namespace TelefonicaEmpresarial.Services.BackgroundJobs
 
                     if (saldoDescontado)
                     {
-                        // Actualizar fecha de expiración
-                        numero.FechaExpiracion = DateTime.UtcNow.AddMonths(1);
+                        // Actualizar fecha de expiración según el periodo contratado
+                        numero.FechaExpiracion = DateTime.UtcNow.AddMonths(periodoMeses);
 
                         // Asegurarse que esté marcado como activo
                         numero.Activo = true;
@@ -305,13 +321,24 @@ namespace TelefonicaEmpresarial.Services.BackgroundJobs
                     // Desactivar el número
                     numero.Activo = false;
 
+                    // Calcular costo total considerando periodo y descuento
+                    decimal costoMensual = numero.CostoMensual;
+                    if (numero.SMSHabilitado && numero.CostoSMS.HasValue)
+                    {
+                        costoMensual += numero.CostoSMS.Value;
+                    }
+
+                    int periodoMeses = numero.PeriodoContratado > 0 ? numero.PeriodoContratado : 1;
+                    decimal descuento = numero.DescuentoAplicado.HasValue ? numero.DescuentoAplicado.Value : 0;
+                    decimal costoTotal = costoMensual * periodoMeses * (1 - descuento);
+
                     // Registrar transacción fallida
                     dbContext.Transacciones.Add(new Transaccion
                     {
                         UserId = numero.UserId,
                         NumeroTelefonicoId = numero.Id,
                         Fecha = DateTime.UtcNow,
-                        Monto = numero.CostoMensual + (numero.SMSHabilitado && numero.CostoSMS.HasValue ? numero.CostoSMS.Value : 0),
+                        Monto = costoTotal,
                         Concepto = $"Desactivación por falta de saldo - {numero.Numero}",
                         StripePaymentId = "renovacion_fallida",
                         Status = "Fallido",
