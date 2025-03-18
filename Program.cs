@@ -249,7 +249,12 @@ builder.Services.AddAuthorization(options =>
 });
 
 var app = builder.Build();
-
+// Agrega esta línea al inicio, justo después de app.Build();
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor |
+                       Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+});
 // Configure el pipeline de solicitud HTTP.
 if (app.Environment.IsDevelopment())
 {
@@ -271,6 +276,17 @@ app.UseRouting();
 
 // Uso de CORS antes de la autenticación
 app.UseCors("AllowWebhooks");
+
+// Añade esto para manejar la terminación HTTPS en App Platform
+app.Use((context, next) =>
+{
+    if (context.Request.Headers.ContainsKey("X-Forwarded-Proto") &&
+        context.Request.Headers["X-Forwarded-Proto"] == "https")
+    {
+        context.Request.Scheme = "https";
+    }
+    return next();
+});
 
 app.UseAuthentication();
 app.UseAuthorization();
