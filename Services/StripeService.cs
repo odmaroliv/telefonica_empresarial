@@ -860,6 +860,7 @@ namespace TelefonicaEmpresarial.Services
             }
         }
 
+
         private async Task ProcesarRecargaSaldo(string sessionId)
         {
             try
@@ -872,8 +873,7 @@ namespace TelefonicaEmpresarial.Services
                     "ProcesandoWebhook");
 
                 // PRIMERO: Verificar si esta sesión ya fue procesada (idempotencia)
-                var saldoService = _serviceProvider.GetRequiredService<ISaldoService>();
-                bool transaccionExistente = await saldoService.ExisteTransaccion(sessionId);
+                bool transaccionExistente = await _saldoService.ExisteTransaccion(sessionId);
 
                 if (transaccionExistente)
                 {
@@ -938,71 +938,107 @@ namespace TelefonicaEmpresarial.Services
                 // Calcular monto (Stripe usa centavos)
                 decimal monto = (decimal)session.AmountTotal / 100;
 
-                // Registrar la recarga con transacción de BD
-                using var dbTransaction = await _context.Database.BeginTransactionAsync();
-                try
+                // Registrar la recarga con transacción de BD - usando un bloqueo más robusto
+                for (int intento = 1; intento <= 3; intento++) // Intentar hasta 3 veces
                 {
-                    // Verificar nuevamente dentro de la transacción
-                    var transaccionProcesada = await _context.MovimientosSaldo
-                        .AnyAsync(m => m.ReferenciaExterna == sessionId);
-
-                    if (transaccionProcesada)
+                    using var dbTransaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+                    try
                     {
-                        _logger.LogInformation($"Webhook: La transacción {sessionId} ya fue procesada (verificación con bloqueo)");
+                        // Verificar nuevamente dentro de la transacción con un bloqueo explícito
+                        var transaccionProcesada = await _context.MovimientosSaldo
+                            .FromSqlInterpolated($"SELECT * FROM \"MovimientosSaldo\" WHERE \"ReferenciaExterna\" = {sessionId} FOR UPDATE")
+                            .AnyAsync();
+
+                        if (transaccionProcesada)
+                        {
+                            _logger.LogInformation($"Webhook: La transacción {sessionId} ya fue procesada (verificación con bloqueo)");
+                            await dbTransaction.RollbackAsync();
+
+                            // Actualizar monitoreo
+                            await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                                sessionId,
+                                "Completada",
+                                "Ya procesada (verificación con bloqueo)");
+
+                            return;
+                        }
+
+                        // Procesar la recarga
+                        var resultado = await _saldoService.AgregarSaldo(
+                            usuario.Id,
+                            monto,
+                            "Recarga de saldo (webhook)",
+                            sessionId,
+                            dbTransaction
+                        );
+
+                        if (resultado)
+                        {
+                            await dbTransaction.CommitAsync();
+                            _logger.LogInformation($"Webhook: Recarga de ${monto} procesada correctamente para usuario {usuario.Id}");
+
+                            // Actualizar monitoreo
+                            await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                                sessionId,
+                                "Completada");
+
+                            return; // Éxito, terminamos
+                        }
+                        else
+                        {
+                            await dbTransaction.RollbackAsync();
+                            _logger.LogError($"Webhook: Error al procesar recarga para sesión {sessionId}");
+
+                            // Si fallamos por alguna razón, intentaremos de nuevo (hasta 3 veces)
+                            if (intento == 3)
+                            {
+                                // Última oportunidad fallida, actualizar estado
+                                await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                                    sessionId,
+                                    "Fallida",
+                                    "Error al agregar saldo después de múltiples intentos");
+                            }
+                            else
+                            {
+                                await Task.Delay(500 * intento); // Esperar un poco antes de reintentar
+                            }
+                        }
+                    }
+                    catch (DbUpdateConcurrencyException concurrencyEx)
+                    {
                         await dbTransaction.RollbackAsync();
+                        _logger.LogWarning(concurrencyEx, $"Conflicto de concurrencia al procesar recarga, intento {intento}/3");
 
-                        // Actualizar monitoreo
-                        await _transaccionMonitorService.ActualizarEstadoTransaccion(
-                            sessionId,
-                            "Completada",
-                            "Ya procesada (verificación con bloqueo)");
-
-                        return;
+                        if (intento < 3)
+                        {
+                            await Task.Delay(1000 * intento); // Esperamos cada vez más tiempo
+                        }
+                        else
+                        {
+                            await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                                sessionId,
+                                "RequiereRevisión",
+                                "Conflicto de concurrencia persistente");
+                        }
                     }
-
-                    // Procesar la recarga
-                    var resultado = await saldoService.AgregarSaldo(
-       usuario.Id,
-       monto,
-       "Recarga de saldo (webhook)",
-       sessionId,
-       dbTransaction
-   );
-
-                    if (resultado)
-                    {
-                        await dbTransaction.CommitAsync();
-                        _logger.LogInformation($"Webhook: Recarga de ${monto} procesada correctamente para usuario {usuario.Id}");
-
-                        // Actualizar monitoreo
-                        await _transaccionMonitorService.ActualizarEstadoTransaccion(
-                            sessionId,
-                            "Completada");
-                    }
-                    else
+                    catch (Exception ex)
                     {
                         await dbTransaction.RollbackAsync();
-                        _logger.LogError($"Webhook: Error al procesar recarga para sesión {sessionId}");
+                        _logger.LogError(ex, $"Webhook: Error en transacción de BD al procesar recarga para sesión {sessionId}");
 
-                        // Actualizar monitoreo
-                        await _transaccionMonitorService.ActualizarEstadoTransaccion(
-                            sessionId,
-                            "Fallida",
-                            "Error al agregar saldo");
+                        // Actualizar monitoreo en el último intento
+                        if (intento == 3)
+                        {
+                            await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                                sessionId,
+                                "Fallida",
+                                $"Error en transacción después de múltiples intentos: {ex.Message}");
+                        }
+                        else
+                        {
+                            await Task.Delay(1000 * intento); // Esperar antes de reintentar
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    await dbTransaction.RollbackAsync();
-                    _logger.LogError(ex, $"Webhook: Error en transacción de BD al procesar recarga para sesión {sessionId}");
-
-                    // Actualizar monitoreo
-                    await _transaccionMonitorService.ActualizarEstadoTransaccion(
-                        sessionId,
-                        "Fallida",
-                        $"Error en transacción: {ex.Message}");
-
-                    throw;
                 }
             }
             catch (Exception ex)
@@ -1020,7 +1056,6 @@ namespace TelefonicaEmpresarial.Services
                 catch { /* Ignorar errores en el monitoreo */ }
             }
         }
-
 
         private async Task ManejarSesionCompletada(Session sesion)
         {
