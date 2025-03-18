@@ -12,6 +12,7 @@ using TelefonicaEmpresaria.Models;
 using TelefonicaEmpresaria.Services;
 using TelefonicaEmpresaria.Services.BackgroundJobs;
 using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services;
+using TelefonicaEmpresaria.Utils;
 using TelefonicaEmpresarial.Areas.Identity;
 using TelefonicaEmpresarial.Middleware;
 using TelefonicaEmpresarial.Services;
@@ -168,8 +169,13 @@ builder.Services.AddScoped<NavMenuService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IAdminLogService, AdminLogService>();
 builder.Services.AddScoped<ITransaccionMonitorService, TransaccionMonitorService>();
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
 
+
+
+// Registrar el HttpContextAccessor (para el filtro globael)
+builder.Services.AddHttpContextAccessor();
 
 // Configuración de CORS si es necesario
 builder.Services.AddCors(options =>
@@ -337,6 +343,7 @@ using (var scope = app.Services.CreateScope())
         logger.LogError(ex, "Error al realizar la migración o seed de la base de datos.");
     }
 }
+
 
 // 1. Endpoint público básico - sin autenticación, para verificación básica (load balancers, etc.)
 app.MapHealthChecks("/health/live", new HealthCheckOptions

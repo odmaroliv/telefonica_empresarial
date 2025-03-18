@@ -4,14 +4,17 @@
     using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
     using Microsoft.EntityFrameworkCore;
     using TelefonicaEmpresaria.Models;
+    using TelefonicaEmpresaria.Utils;
 
     namespace TelefonicaEmpresarial.Data
     {
         public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         {
-            public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+            private readonly ICurrentUserService _currentUserService;
+            public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, ICurrentUserService currentUserService)
                 : base(options)
             {
+                _currentUserService = currentUserService;
             }
 
             public DbSet<NumeroTelefonico> NumerosTelefonicos { get; set; }
@@ -32,6 +35,10 @@
             protected override void OnModelCreating(ModelBuilder builder)
             {
                 base.OnModelCreating(builder);
+                //filtro global
+                builder.Entity<NumeroTelefonico>()
+            .HasQueryFilter(n => _currentUserService.IsAdmin || n.UserId == _currentUserService.UserId);
+
 
                 // Configuraciones adicionales
                 builder.Entity<NumeroTelefonico>()
