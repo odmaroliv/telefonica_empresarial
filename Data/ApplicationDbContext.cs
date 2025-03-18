@@ -73,20 +73,20 @@
                 // Filtros para entidades de configuración y sistema:
                 // Solo los administradores
                 // ==============================
-                builder.Entity<ConfiguracionSistema>()
-                    .HasQueryFilter(c => _currentUserService.IsAdmin);
+                //builder.Entity<ConfiguracionSistema>()
+                //    .HasQueryFilter(c => _currentUserService.IsAdmin);
 
-                builder.Entity<RequisitosRegulatorios>()
-                    .HasQueryFilter(r => _currentUserService.IsAdmin);
+                //builder.Entity<RequisitosRegulatorios>()
+                //    .HasQueryFilter(r => _currentUserService.IsAdmin);
 
-                builder.Entity<AdminLog>()
-                    .HasQueryFilter(a => _currentUserService.IsAdmin);
+                //builder.Entity<AdminLog>()
+                //    .HasQueryFilter(a => _currentUserService.IsAdmin);
 
-                builder.Entity<TransaccionAuditoria>()
-                    .HasQueryFilter(t => _currentUserService.IsAdmin);
+                //builder.Entity<TransaccionAuditoria>()
+                //    .HasQueryFilter(t => _currentUserService.IsAdmin);
 
-                builder.Entity<EventoWebhook>()
-                    .HasQueryFilter(e => _currentUserService.IsAdmin);
+                //builder.Entity<EventoWebhook>()
+                //    .HasQueryFilter(e => _currentUserService.IsAdmin);
 
                 // ==============================
                 // Relaciones y configuraciones adicionales
