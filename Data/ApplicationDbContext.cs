@@ -35,12 +35,62 @@
             protected override void OnModelCreating(ModelBuilder builder)
             {
                 base.OnModelCreating(builder);
-                //filtro global
+
+                // ==============================
+                // Filtros globales para entidades propias del usuario
+                // ==============================
                 builder.Entity<NumeroTelefonico>()
-            .HasQueryFilter(n => _currentUserService.IsAdmin || n.UserId == _currentUserService.UserId);
+                    .HasQueryFilter(n => _currentUserService.IsAdmin || n.UserId == _currentUserService.UserId);
 
+                builder.Entity<Transaccion>()
+                    .HasQueryFilter(t => _currentUserService.IsAdmin || t.UserId == _currentUserService.UserId);
 
-                // Configuraciones adicionales
+                builder.Entity<MovimientoSaldo>()
+                    .HasQueryFilter(m => _currentUserService.IsAdmin || m.UserId == _currentUserService.UserId);
+
+                builder.Entity<DocumentacionUsuario>()
+                    .HasQueryFilter(d => _currentUserService.IsAdmin || d.UserId == _currentUserService.UserId);
+
+                builder.Entity<SaldoCuenta>()
+                    .HasQueryFilter(s => _currentUserService.IsAdmin || s.UserId == _currentUserService.UserId);
+
+                builder.Entity<LlamadaSaliente>()
+                    .HasQueryFilter(l => _currentUserService.IsAdmin || l.UserId == _currentUserService.UserId);
+
+                // ==============================
+                // Filtros para logs que se relacionan a registros de usuario
+                // (se accede vía la relación con NumeroTelefonico)
+                // ==============================
+                builder.Entity<LogLlamada>()
+                    .HasQueryFilter(l => _currentUserService.IsAdmin
+                                        || (l.NumeroTelefonico != null && l.NumeroTelefonico.UserId == _currentUserService.UserId));
+
+                builder.Entity<LogSMS>()
+                    .HasQueryFilter(s => _currentUserService.IsAdmin
+                                        || (s.NumeroTelefonico != null && s.NumeroTelefonico.UserId == _currentUserService.UserId));
+
+                // ==============================
+                // Filtros para entidades de configuración y sistema:
+                // Solo los administradores
+                // ==============================
+                builder.Entity<ConfiguracionSistema>()
+                    .HasQueryFilter(c => _currentUserService.IsAdmin);
+
+                builder.Entity<RequisitosRegulatorios>()
+                    .HasQueryFilter(r => _currentUserService.IsAdmin);
+
+                builder.Entity<AdminLog>()
+                    .HasQueryFilter(a => _currentUserService.IsAdmin);
+
+                builder.Entity<TransaccionAuditoria>()
+                    .HasQueryFilter(t => _currentUserService.IsAdmin);
+
+                builder.Entity<EventoWebhook>()
+                    .HasQueryFilter(e => _currentUserService.IsAdmin);
+
+                // ==============================
+                // Relaciones y configuraciones adicionales
+                // ==============================
                 builder.Entity<NumeroTelefonico>()
                     .HasOne(n => n.Usuario)
                     .WithMany(u => u.NumerosTelefonicos)
