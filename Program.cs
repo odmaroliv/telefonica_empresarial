@@ -263,7 +263,7 @@ else
 app.UseAntiforgery();
 app.UseGlobalExceptionHandler();
 
-app.UseHttpsRedirection();
+//app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRateLimiter();
@@ -336,5 +336,6 @@ app.MapHealthChecksUI(options =>
     options.UIPath = "/health-ui";
     options.ApiPath = "/health-api"; // Esta es la forma correcta de configurarlo
 }).RequireAuthorization("AdminOnly");
+
 
 app.Run();
