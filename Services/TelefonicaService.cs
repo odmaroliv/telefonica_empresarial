@@ -221,6 +221,13 @@ namespace TelefonicaEmpresarial.Services
             try
             {
                 _logger.LogInformation($"Iniciando proceso de compra del número {numero} para usuario {usuario.Id}");
+                bool precioAceptable = await _twilioService.VerificarPrecioAceptable(numero, 3.0m);
+
+                if (!precioAceptable)
+                {
+                    _logger.LogWarning($"El número {numero} excede el precio máximo permitido");
+                    return (null, "El número seleccionado excede el precio máximo permitido (3 USD). Por favor, selecciona otro número.");
+                }
 
                 // 1. Calcular el costo mensual
                 var costoMensual = await CalcularCostoMensualNumero(numero, habilitarSMS);
@@ -1002,17 +1009,19 @@ namespace TelefonicaEmpresarial.Services
                 return false;
             }
         }
-        public async Task<(NumeroTelefonico? Numero, string Error)> ComprarNumeroConPeriodo(
-    ApplicationUser usuario,
-    string numero,
-    string numeroRedireccion,
-    bool habilitarSMS,
-    int periodoMeses,
-    decimal descuento)
+        public async Task<(NumeroTelefonico? Numero, string Error)> ComprarNumeroConPeriodo(ApplicationUser usuario, string numero, string numeroRedireccion, bool habilitarSMS,
+                            int periodoMeses, decimal descuento)
         {
             try
             {
                 _logger.LogInformation($"Iniciando proceso de compra del número {numero} para usuario {usuario.Id} con periodo de {periodoMeses} meses");
+                bool precioAceptable = await _twilioService.VerificarPrecioAceptable(numero, 3.0m);
+
+                if (!precioAceptable)
+                {
+                    _logger.LogWarning($"El número {numero} excede el precio máximo permitido");
+                    return (null, "El número seleccionado excede el precio máximo permitido (3 USD). Por favor, selecciona otro número.");
+                }
 
                 // 1. Calcular el costo mensual
                 var (costoNumero, costoSMS) = await ObtenerCostos(numero);

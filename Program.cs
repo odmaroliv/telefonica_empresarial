@@ -78,6 +78,7 @@ builder.Services.AddHealthChecks()
     // Agrega otros servicios críticos
     .AddUrlGroup(new Uri("https://api.twilio.com/"), "twilio-api")
     .AddUrlGroup(new Uri("https://status.stripe.com/"), "stripe-status")
+    .AddUrlGroup(new Uri("https://pricing.twilio.com/v1/"), "twilio-precing-status")
     .AddCheck<QuartzJobsHealthCheck>("quartz-jobs")
     .AddCheck<TransaccionesMonitorHealthCheck>("transacciones-monitor-job");
 

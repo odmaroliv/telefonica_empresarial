@@ -1,4 +1,7 @@
-﻿using Twilio;
+﻿using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using Twilio;
 using Twilio.Exceptions;
 using Twilio.Rest.Api.V2010.Account;
 using Twilio.Rest.Api.V2010.Account.AvailablePhoneNumberCountry;
@@ -8,6 +11,20 @@ namespace TelefonicaEmpresarial.Services
 {
     public interface ITwilioService
     {
+        /// <summary>
+        /// Obtiene el precio real de un número específico desde la API de Twilio
+        /// </summary>
+        /// <param name="numeroTelefono">Número en formato E.164, ej: +14155552671</param>
+        /// <returns>Precio mensual del número en USD</returns>
+        Task<decimal> ObtenerPrecioNumero(string numeroTelefono);
+
+        /// <summary>
+        /// Verifica si un número excede el precio máximo permitido
+        /// </summary>
+        /// <param name="numeroTelefono">Número en formato E.164, ej: +14155552671</param>
+        /// <param name="precioMaximoUSD">Precio máximo permitido en USD</param>
+        /// <returns>True si el precio es aceptable, False si excede el máximo</returns>
+        Task<bool> VerificarPrecioAceptable(string numeroTelefono, decimal precioMaximoUSD = 3.0m);
         Task<List<TwilioNumeroDisponible>> ObtenerNumerosDisponibles(string pais = "MX", int limite = 10, string ciudad = "");
         Task<List<TwilioNumeroDisponible>> ObtenerNumerosPorCodigoArea(string pais, string codigoArea, int limite = 10);
 
@@ -33,15 +50,17 @@ namespace TelefonicaEmpresarial.Services
         private readonly ILogger<TwilioService> _logger;
         private readonly List<PaisDisponible> _paisesDisponibles;
         private readonly Dictionary<string, string> _bundlesPorPais;
+        private readonly Dictionary<string, decimal> _preciosCache = new();
+        private readonly HttpClient _httpClient;
 
-        public TwilioService(IConfiguration configuration, ILogger<TwilioService> logger)
+        public TwilioService(IConfiguration configuration, ILogger<TwilioService> logger, HttpClient httpClient)
         {
             _configuration = configuration;
             _logger = logger;
             _accountSid = _configuration["Twilio:AccountSid"] ?? throw new ArgumentNullException("Twilio:AccountSid");
             _authToken = _configuration["Twilio:AuthToken"] ?? throw new ArgumentNullException("Twilio:AuthToken");
             _applicationSid = _configuration["Twilio:ApplicationSid"] ?? "";
-
+            _httpClient = httpClient;
             // Inicializar Twilio con credenciales
             TwilioClient.Init(_accountSid, _authToken);
 
@@ -81,6 +100,14 @@ namespace TelefonicaEmpresarial.Services
                 new PaisDisponible { Codigo = "PE", Nombre = "Perú", Prefijo = "+51" },
                 new PaisDisponible { Codigo = "BR", Nombre = "Brasil", Prefijo = "+55" }
             };
+
+            // Configurar el HttpClient [basic
+            var authString = $"{_accountSid}:{_authToken}";
+            var base64Auth = Convert.ToBase64String(Encoding.ASCII.GetBytes(authString));
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", base64Auth);
+
+
+            _httpClient.BaseAddress = new Uri("https://pricing.twilio.com/v1/");
         }
 
         public async Task<List<TwilioNumeroDisponible>> ObtenerNumerosDisponibles(string pais = "MX", int limite = 10, string ciudad = "")
@@ -597,22 +624,116 @@ namespace TelefonicaEmpresarial.Services
 
         public async Task<decimal> ObtenerCostoNumero(string numero)
         {
-            // Implementación real para obtener precios desde Twilio
             try
             {
-                // Extraer país del número
-                string codigoPais = ExtractCountryCode(numero);
+                _logger.LogInformation($"Obteniendo costo real para el número {numero}");
 
-                // En un entorno real, se consultaría la API de precios de Twilio
-                // Como esa API no está disponible directamente, usamos un proxy de precios basados en país
-                return GetPrecioBasePorPais(codigoPais);
+                // Llamar al servicio de pricing de Twilio para obtener el precio real
+                decimal precioRealUSD = await ObtenerPrecioNumero(numero);
+
+                // Convertir USD a MXN si es necesario
+                decimal tipoCambioUSDMXN = await ObtenerTipoCambioActual();
+                decimal precioRealMXN = precioRealUSD * tipoCambioUSDMXN;
+
+                _logger.LogInformation($"Precio real obtenido para {numero}: ${precioRealUSD} USD (${precioRealMXN} MXN)");
+
+                return precioRealMXN;
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error al obtener costo del número: {ex.Message}");
-                // Valor por defecto conservador
-                return 12.0m;
+                _logger.LogError(ex, $"Error al obtener costo real del número: {ex.Message}");
+
+                // Extraer país del número y devolver un precio estimado como fallback
+                string codigoPais = ExtractCountryCode(numero);
+                decimal precioBase = GetPrecioBasePorPais(codigoPais);
+
+                _logger.LogWarning($"Usando precio base para {numero}: ${precioBase} MXN");
+                return precioBase;
             }
+        }
+
+        // Método para obtener el tipo de cambio actual (puedes implementarlo según tu fuente de datos)
+        private async Task<decimal> ObtenerTipoCambioActual()
+        {
+            try
+            {
+                //Implementar la config adelante
+                //var tipoCambio = await _context.ConfiguracionesSistema
+                //    .Where(c => c.Clave == "TipoCambioUSDMXN")
+                //    .Select(c => decimal.Parse(c.Valor))
+                //    .FirstOrDefaultAsync();
+                var tipoCambio = 20.0m;
+                return tipoCambio > 0 ? tipoCambio : 20.0m; // Valor predeterminado si no hay configuración
+            }
+            catch
+            {
+                return 20.0m;
+            }
+        }
+
+
+        /// <summary>
+        /// [Deprecado] Método para determinar si un número tiene un patrón fácil de recordar 
+        /// </summary>
+        /// <param name="numero"></param>
+        /// <returns></returns>
+        private bool EsNumeroFacilRecordar(string numero)
+        {
+            // Quitar el código de país y caracteres no numéricos
+            string digitosSolos = new string(numero.Where(char.IsDigit).ToArray());
+
+            // Eliminar el código de país (asumiendo 1-3 dígitos para el código)
+            if (digitosSolos.Length > 3)
+            {
+                digitosSolos = digitosSolos.Substring(Math.Min(3, digitosSolos.Length - 7));
+            }
+
+            // Verificar patrones fáciles de recordar
+            // 1. Secuencias (123456, 654321)
+            bool esSecuencia = true;
+            for (int i = 1; i < digitosSolos.Length; i++)
+            {
+                if (digitosSolos[i] != digitosSolos[i - 1] + 1 && digitosSolos[i] != digitosSolos[i - 1] - 1)
+                {
+                    esSecuencia = false;
+                    break;
+                }
+            }
+
+            // 2. Dígitos repetidos (111111, 222222)
+            bool esRepetido = true;
+            for (int i = 1; i < digitosSolos.Length; i++)
+            {
+                if (digitosSolos[i] != digitosSolos[0])
+                {
+                    esRepetido = false;
+                    break;
+                }
+            }
+
+            // 3. Patrones alternantes (121212, 343434)
+            bool esAlternante = true;
+            if (digitosSolos.Length >= 4) // Necesitamos al menos 4 dígitos para un patrón alternante
+            {
+                for (int i = 2; i < digitosSolos.Length; i++)
+                {
+                    if (digitosSolos[i] != digitosSolos[i - 2])
+                    {
+                        esAlternante = false;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                esAlternante = false;
+            }
+
+            // 4. Terminación con dígitos repetidos (xxxx0000)
+            bool terminaRepetido = digitosSolos.Length >= 8 &&
+                                  digitosSolos.Substring(digitosSolos.Length - 4).All(c => c == digitosSolos[digitosSolos.Length - 4]);
+
+            return esSecuencia || esRepetido || esAlternante || terminaRepetido;
         }
 
         public async Task<decimal> ObtenerCostoSMS()
@@ -1004,11 +1125,168 @@ namespace TelefonicaEmpresarial.Services
             // Si no se encuentra, devolver el código de área como información
             return $"Código de área: {areaCode}";
         }
+        public async Task<decimal> ObtenerPrecioNumero(string numeroTelefono)
+        {
+            try
+            {
+                // Si tenemos el precio en caché, lo devolvemos directamente
+                if (_preciosCache.TryGetValue(numeroTelefono, out decimal precioCache))
+                {
+                    _logger.LogInformation($"Precio para {numeroTelefono} obtenido de caché: ${precioCache} USD");
+                    return precioCache;
+                }
+
+                // Extraer el código de país del número para hacer la consulta a la API de precios
+                string codigoPais = ExtractCountryCode(numeroTelefono);
+
+                // Determinar el tipo de número (local, toll-free, mobile, etc.)
+                string tipoNumero = DeterminarTipoNumero(numeroTelefono);
+
+                // Hacer la solicitud a la API de precios de Twilio
+                var response = await _httpClient.GetAsync($"PhoneNumbers/Countries/{codigoPais}");
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning($"Error al obtener precios para país {codigoPais}: {response.StatusCode}");
+                    return GetPrecioEstimadoPorPais(codigoPais);
+                }
+
+                // Parsear la respuesta JSON
+                var content = await response.Content.ReadAsStringAsync();
+                var pricingInfo = JsonSerializer.Deserialize<TwilioPricingResponse>(content, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (pricingInfo?.PhoneNumberPrices == null || !pricingInfo.PhoneNumberPrices.Any())
+                {
+                    _logger.LogWarning($"No se encontraron precios para país {codigoPais}");
+                    return GetPrecioEstimadoPorPais(codigoPais);
+                }
+
+                // Buscar el precio para el tipo de número específico
+                var precioPorTipo = pricingInfo.PhoneNumberPrices
+                    .FirstOrDefault(p => p.NumberType.ToLower() == tipoNumero.ToLower());
+
+                if (precioPorTipo == null)
+                {
+                    // Si no encontramos el tipo específico, usar el precio de 'local' como fallback
+                    precioPorTipo = pricingInfo.PhoneNumberPrices
+                        .FirstOrDefault(p => p.NumberType.ToLower() == "local");
+                }
+
+                if (precioPorTipo == null)
+                {
+                    _logger.LogWarning($"No se encontró precio para tipo {tipoNumero} en país {codigoPais}");
+                    return GetPrecioEstimadoPorPais(codigoPais);
+                }
+
+                // Convertir el precio a decimal y guardarlo en caché
+                if (decimal.TryParse(precioPorTipo.CurrentPrice, out decimal precio))
+                {
+                    _preciosCache[numeroTelefono] = precio;
+                    _logger.LogInformation($"Precio obtenido para {numeroTelefono}: ${precio} USD");
+                    return precio;
+                }
+
+                _logger.LogWarning($"No se pudo convertir el precio '{precioPorTipo.CurrentPrice}' a decimal");
+                return GetPrecioEstimadoPorPais(codigoPais);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al obtener precio para número {numeroTelefono}");
+                // Extraer el país y devolver un precio estimado
+                return GetPrecioEstimadoPorPais(ExtractCountryCode(numeroTelefono));
+            }
+        }
+
+        public async Task<bool> VerificarPrecioAceptable(string numeroTelefono, decimal precioMaximoUSD = 3.0m)
+        {
+            try
+            {
+                decimal precioReal = await ObtenerPrecioNumero(numeroTelefono);
+
+                bool esAceptable = precioReal <= precioMaximoUSD;
+
+                if (!esAceptable)
+                {
+                    _logger.LogWarning($"Número {numeroTelefono} excede el precio máximo. Precio: ${precioReal} USD, Máximo: ${precioMaximoUSD} USD");
+                }
+
+                return esAceptable;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al verificar precio aceptable para {numeroTelefono}");
+                // En caso de error, asumimos que el precio es aceptable para no bloquear la compra
+                return true;
+            }
+        }
+
+
+
+
+        // Método auxiliar para determinar el tipo de número
+        private string DeterminarTipoNumero(string phoneNumber)
+        {
+            // Esta es una simplificación, en realidad necesitarías lógica más compleja
+            // para identificar correctamente el tipo de número basado en sus características
+
+            // Para EE.UU., los números que empiezan con +1 800, +1 888, +1 877, etc. son toll-free
+            if (phoneNumber.StartsWith("+1"))
+            {
+                string areaCode = phoneNumber.Substring(2, 3);
+                if (areaCode == "800" || areaCode == "888" || areaCode == "877" ||
+                    areaCode == "866" || areaCode == "855" || areaCode == "844")
+                {
+                    return "toll free";
+                }
+            }
+
+            // Por defecto, consideramos que es local
+            return "local";
+        }
+
+        // Método fallback para estimar precios cuando la API no responde
+        private decimal GetPrecioEstimadoPorPais(string codigoPais)
+        {
+            // Estos valores son estimaciones y deberían actualizarse basado en experiencia real
+            var precios = new Dictionary<string, decimal>
+            {
+                {"US", 1.00m},
+                {"MX", 1.50m},
+                {"CA", 1.00m},
+                {"GB", 1.50m},
+                {"ES", 1.20m},
+                {"DE", 1.20m},
+                {"FR", 1.20m},
+                {"IT", 1.20m},
+                {"AU", 1.50m},
+                {"NZ", 1.50m},
+                {"IN", 2.00m},
+                {"BR", 2.00m}
+            };
+
+            return precios.ContainsKey(codigoPais) ? precios[codigoPais] : 2.00m;
+        }
     }
 
 
+    public class TwilioPricingResponse
+    {
+        public string Country { get; set; }
+        public string IsoCountry { get; set; }
+        public List<PhoneNumberPrice> PhoneNumberPrices { get; set; }
+        public string PriceUnit { get; set; }
+        public string Url { get; set; }
+    }
 
-
+    public class PhoneNumberPrice
+    {
+        public string NumberType { get; set; }
+        public string BasePrice { get; set; }
+        public string CurrentPrice { get; set; }
+    }
     // Clases para mapear respuestas y datos
     public class TwilioNumeroDisponible
     {
