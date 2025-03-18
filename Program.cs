@@ -239,6 +239,8 @@ builder.Services.AddAntiforgery(options =>
     options.Cookie.SameSite = SameSiteMode.Strict;
 });
 
+builder.WebHost.UseUrls("http://*:8080");
+
 // Crear una política de autorización para health checks
 builder.Services.AddAuthorization(options =>
 {
