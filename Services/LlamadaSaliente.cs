@@ -181,6 +181,10 @@ namespace TelefonicaEmpresaria.Services
                 {
                     return (null, "El número telefónico no está activo");
                 }
+                if (!numeroTelefonico.LlamadasSalientes)
+                {
+                    return (null, "Las llamadas salientes están deshabilitadas para este número");
+                }
 
                 // Verificar saldo disponible para al menos 1 minuto de llamada
                 decimal costoEstimado = await CalcularCostoEstimadoLlamada(numeroTelefonico.Numero, numeroDestino, 1);
