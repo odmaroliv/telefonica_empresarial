@@ -80,6 +80,96 @@
                     </div>
                 </div>
             </div>
+            <!-- Busqueda por Ciudad o Estado -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Ciudad (opcional)</label>
+                <div class="flex">
+                    <input type="text" @bind="ciudadBusqueda" @bind:event="oninput"
+                           class="flex-1 px-3 py-2 border border-gray-300 rounded-l-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                           placeholder="Ej. California, Monterrey, etc." />
+                    <button @onclick="BuscarPorCiudad"
+                            class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-r-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                        <span>Buscar</span>
+                    </button>
+                </div>
+                <p class="mt-1 text-xs text-gray-500">Ingresa una ciudad o región para buscar números específicos de esa localidad.</p>
+            </div>
+
+            <!-- Si hay búsqueda por ciudad, agregar esta notificación -->
+            @if (!string.IsNullOrEmpty(ciudadBusqueda) && !cargandoNumeros && numerosDisponibles != null && numerosDisponibles.Any())
+            {
+                <div class="mb-4 bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded relative" role="alert">
+                    <p>Mostrando números para: <strong>@ciudadBusqueda</strong></p>
+                    <button @onclick="LimpiarBusqueda" class="absolute top-3 right-3 text-blue-600 hover:text-blue-800">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+            }
+
+            <!-- Añadir debajo del campo de búsqueda por ciudad -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Código de Área (opcional)</label>
+                <div class="flex">
+                    <input type="text" @bind="codigoAreaBusqueda" @bind:event="oninput"
+                           class="flex-1 px-3 py-2 border border-gray-300 rounded-l-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                           placeholder="Ej. 619, 858, etc." />
+                    <button @onclick="BuscarPorCodigoArea"
+                            class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-r-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                        <span>Buscar</span>
+                    </button>
+                </div>
+                <p class="mt-1 text-xs text-gray-500">Ingresa un código de área (solo números) para buscar en esa zona específica.</p>
+            </div>
+
+            <!-- Si hay búsqueda por código de área, agregar esta notificación -->
+            @if (!string.IsNullOrEmpty(codigoAreaBusqueda) && !cargandoNumeros && numerosDisponibles != null && numerosDisponibles.Any())
+            {
+                <div class="mb-4 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded relative" role="alert">
+                    <p>Mostrando números con código de área: <strong>@codigoAreaBusqueda</strong></p>
+                    <button @onclick="LimpiarBusqueda" class="absolute top-3 right-3 text-green-600 hover:text-green-800">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+            }
+
+            <!-- Tabla de referencia de códigos de área populares -->
+            @if (paisSeleccionado == "US" && string.IsNullOrEmpty(codigoAreaBusqueda) && string.IsNullOrEmpty(ciudadBusqueda))
+            {
+                <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">Códigos de área populares en Estados Unidos:</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 text-xs">
+                        <div><strong>212, 646, 917:</strong> Nueva York</div>
+                        <div><strong>213, 310, 323:</strong> Los Ángeles</div>
+                        <div><strong>312, 773:</strong> Chicago</div>
+                        <div><strong>305, 786:</strong> Miami</div>
+                        <div><strong>415, 628:</strong> San Francisco</div>
+                        <div><strong>619, 858:</strong> San Diego</div>
+                        <div><strong>702:</strong> Las Vegas</div>
+                        <div><strong>713, 281, 832:</strong> Houston</div>
+                    </div>
+                </div>
+            }
+
+            @if (paisSeleccionado == "MX" && string.IsNullOrEmpty(codigoAreaBusqueda) && string.IsNullOrEmpty(ciudadBusqueda))
+            {
+                <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">Códigos de área populares en México:</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 text-xs">
+                        <div><strong>55:</strong> Ciudad de México</div>
+                        <div><strong>33:</strong> Guadalajara</div>
+                        <div><strong>81:</strong> Monterrey</div>
+                        <div><strong>664:</strong> Tijuana</div>
+                        <div><strong>998:</strong> Cancún</div>
+                        <div><strong>444:</strong> San Luis Potosí</div>
+                        <div><strong>222:</strong> Puebla</div>
+                        <div><strong>999:</strong> Mérida</div>
+                    </div>
+                </div>
+            }
             
             @if (cargandoNumeros)
             {
@@ -110,14 +200,21 @@
             }
             else
             {
+                <!-- Reemplazar la visualización de los números en la grid por esto -->
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                     @foreach (var numero in numerosDisponibles)
                     {
-                        <div @onclick="() => SeleccionarNumero(numero)" 
-                             class="@(numeroSeleccionado?.Number == numero.Number ? "bg-blue-50 border-blue-500" : "bg-gray-50 border-gray-200") 
-                                    border-2 rounded-lg p-4 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors">
+                        <div @onclick="() => SeleccionarNumero(numero)"
+                             class="@(numeroSeleccionado?.Number == numero.Number ? "bg-blue-50 border-blue-500" : "bg-gray-50 border-gray-200")
+                    border-2 rounded-lg p-4 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors">
                             <div class="font-bold text-lg mb-2">@FormatearNumero(numero.Number)</div>
-                           @*  <div class="text-sm text-gray-600">Costo mensual: $@numero.MonthlyRentalRate.ToString("0.00") MXN</div> *@
+
+                            <!-- Mostrar localidad si está disponible -->
+                            @if (!string.IsNullOrEmpty(numero.Locality))
+                            {
+                                <div class="text-sm text-gray-600 mb-2">@numero.Locality</div>
+                            }
+
                             <div class="mt-2 flex">
                                 @if (numero.Voice)
                                 {
@@ -309,6 +406,8 @@
     private decimal costoSMS;
     private decimal saldoUsuario = 0;
     private bool isOnlyUsa = false;
+    private string ciudadBusqueda = "";
+    private string codigoAreaBusqueda = "";
     
     // Nuevas variables para el periodo de suscripción
     private int periodoMeses = 6; // Valor predeterminado: 6 meses
@@ -449,19 +548,22 @@
         cargandoNumeros = true;
         numeroSeleccionado = null;
         error = null;
-        
+
         try
         {
-            Logger.LogInformation($"Cargando números para país {paisSeleccionado}");
-            
-            numerosDisponibles = await TelefonicaService.ObtenerNumerosDisponibles(paisSeleccionado, 12);
-            
+            Logger.LogInformation($"Cargando números para país {paisSeleccionado}" +
+                (!string.IsNullOrEmpty(ciudadBusqueda) ? $" y ciudad {ciudadBusqueda}" : ""));
+
+            // Usar el parámetro de ciudad si está presente
+            numerosDisponibles = await TelefonicaService.ObtenerNumerosDisponibles(
+                paisSeleccionado, 12, ciudadBusqueda);
+
             Logger.LogInformation($"Se cargaron {numerosDisponibles.Count} números");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, $"Error al cargar números para {paisSeleccionado}");
-            
+
             error = $"No pudimos cargar números: {ex.Message}";
             numerosDisponibles = new List<TwilioNumeroDisponible>();
         }
@@ -469,6 +571,54 @@
         {
             cargandoNumeros = false;
         }
+    }
+    private async Task BuscarPorCiudad()
+    {
+        if (string.IsNullOrWhiteSpace(ciudadBusqueda))
+        {
+            // Si el campo está vacío, cargar números normalmente
+            await CargarNumeros();
+            return;
+        }
+
+        cargandoNumeros = true;
+        numeroSeleccionado = null;
+        error = null;
+
+        try
+        {
+            Logger.LogInformation($"Buscando números para país {paisSeleccionado} y ciudad {ciudadBusqueda}");
+
+            // Llamar al método actualizado que incluye el parámetro de ciudad
+            numerosDisponibles = await TelefonicaService.ObtenerNumerosDisponibles(
+                paisSeleccionado, 12, ciudadBusqueda);
+
+            Logger.LogInformation($"Se encontraron {numerosDisponibles.Count} números para {ciudadBusqueda}");
+
+            if (numerosDisponibles.Count == 0)
+            {
+                error = $"No se encontraron números en {ciudadBusqueda}. Intente con otra ciudad o región.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error al buscar números para {paisSeleccionado} y ciudad {ciudadBusqueda}");
+
+            error = $"No pudimos cargar números para {ciudadBusqueda}: {ex.Message}";
+            numerosDisponibles = new List<TwilioNumeroDisponible>();
+        }
+        finally
+        {
+            cargandoNumeros = false;
+        }
+    }
+
+    
+    private async Task LimpiarBusqueda()
+    {
+        ciudadBusqueda = "";
+        codigoAreaBusqueda = "";
+        await CargarNumeros();
     }
 
     private async Task CambiarPais()
@@ -664,5 +814,54 @@
     {
         NavigationManager.NavigateTo("/saldo");
     }
-   
+    private async Task BuscarPorCodigoArea()
+    {
+        if (string.IsNullOrWhiteSpace(codigoAreaBusqueda))
+        {
+            // Si el campo está vacío, cargar números normalmente
+            await CargarNumeros();
+            return;
+        }
+
+        // Validar que el código de área solo contiene números
+        if (!codigoAreaBusqueda.All(char.IsDigit))
+        {
+            error = "El código de área debe contener solo números.";
+            return;
+        }
+
+        cargandoNumeros = true;
+        numeroSeleccionado = null;
+        error = null;
+
+        try
+        {
+            Logger.LogInformation($"Buscando números para país {paisSeleccionado} y código de área {codigoAreaBusqueda}");
+
+            // Llamar al método actualizado que incluye el parámetro de código de área
+            numerosDisponibles = await TelefonicaService.ObtenerNumerosPorCodigoArea(
+                paisSeleccionado, codigoAreaBusqueda, 12);
+
+            Logger.LogInformation($"Se encontraron {numerosDisponibles.Count} números con código de área {codigoAreaBusqueda}");
+
+            if (numerosDisponibles.Count == 0)
+            {
+                error = $"No se encontraron números con código de área {codigoAreaBusqueda}. Intente con otro código.";
+            }
+
+            // Limpiar la búsqueda por ciudad si había alguna
+            ciudadBusqueda = "";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error al buscar números para código de área {codigoAreaBusqueda}");
+
+            error = $"No pudimos cargar números para código de área {codigoAreaBusqueda}: {ex.Message}";
+            numerosDisponibles = new List<TwilioNumeroDisponible>();
+        }
+        finally
+        {
+            cargandoNumeros = false;
+        }
+    }
 }

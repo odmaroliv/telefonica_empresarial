@@ -34,7 +34,7 @@ namespace TelefonicaEmpresarial.Services
             string? subscriptionId);
         Task<bool> VerificarNumeroActivo(string plivoUuid);
         Task<Transaccion?> ObtenerTransaccionPorSesion(string sessionId);
-        Task<List<TwilioNumeroDisponible>> ObtenerNumerosDisponibles(string pais = "MX", int limite = 10);
+
         Task<(NumeroTelefonico? Numero, string Error)> ComprarNumero(ApplicationUser usuario, string numero, string numeroRedireccion, bool habilitarSMS);
         Task<bool> ActualizarRedireccion(int numeroId, string nuevoNumeroRedireccion);
         Task<bool> HabilitarSMS(int numeroId);
@@ -50,6 +50,9 @@ namespace TelefonicaEmpresarial.Services
         Task<bool> DescontarSaldoMensual(NumeroTelefonico numero);
         Task<bool> ProcesarConsumoLlamada(NumeroTelefonico numero, LogLlamada logLlamada);
         Task<bool> ActualizarConfiguracionLlamadas(int numeroId, bool llamadasEntrantes, bool llamadasSalientes);
+        Task<List<TwilioNumeroDisponible>> ObtenerNumerosDisponibles(string pais = "MX", int limite = 10, string ciudad = "");
+        Task<List<TwilioNumeroDisponible>> ObtenerNumerosPorCodigoArea(string pais, string codigoArea, int limite = 10);
+
 
     }
 
@@ -92,13 +95,13 @@ namespace TelefonicaEmpresarial.Services
                 );
         }
 
-        public async Task<List<TwilioNumeroDisponible>> ObtenerNumerosDisponibles(string pais = "MX", int limite = 10)
+        public async Task<List<TwilioNumeroDisponible>> ObtenerNumerosDisponibles(string pais = "MX", int limite = 10, string ciudad = "")
         {
             try
             {
                 _logger.LogInformation($"Solicitando números disponibles para país {pais} con límite {limite}");
 
-                var numeros = await _twilioService.ObtenerNumerosDisponibles(pais, limite);
+                var numeros = await _twilioService.ObtenerNumerosDisponibles(pais, limite, ciudad);
 
                 _logger.LogInformation($"Se encontraron {numeros.Count} números disponibles para {pais}");
 
@@ -110,7 +113,24 @@ namespace TelefonicaEmpresarial.Services
                 throw;
             }
         }
-        // En TelefonicaService.cs
+        public async Task<List<TwilioNumeroDisponible>> ObtenerNumerosPorCodigoArea(string pais, string codigoArea, int limite = 10)
+        {
+            try
+            {
+                _logger.LogInformation($"Solicitando números disponibles para país {pais} con límite {limite}");
+
+                var numeros = await _twilioService.ObtenerNumerosPorCodigoArea(pais, codigoArea, limite);
+
+                _logger.LogInformation($"Se encontraron {numeros.Count} números disponibles para {pais}");
+
+                return numeros;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error al obtener números disponibles: {ex.Message}");
+                throw;
+            }
+        }
 
 
         public async Task<(decimal CostoNumero, decimal CostoSMS)> ObtenerCostos(string numeroSeleccionado)

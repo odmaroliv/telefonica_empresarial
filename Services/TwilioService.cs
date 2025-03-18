@@ -8,7 +8,9 @@ namespace TelefonicaEmpresarial.Services
 {
     public interface ITwilioService
     {
-        Task<List<TwilioNumeroDisponible>> ObtenerNumerosDisponibles(string pais = "MX", int limite = 10);
+        Task<List<TwilioNumeroDisponible>> ObtenerNumerosDisponibles(string pais = "MX", int limite = 10, string ciudad = "");
+        Task<List<TwilioNumeroDisponible>> ObtenerNumerosPorCodigoArea(string pais, string codigoArea, int limite = 10);
+
         Task<TwilioNumeroComprado?> ComprarNumero(string numero);
         Task<bool> ConfigurarRedireccion(string twilioSid, string numeroDestino);
         Task<bool> ActivarSMS(string twilioSid);
@@ -81,7 +83,7 @@ namespace TelefonicaEmpresarial.Services
             };
         }
 
-        public async Task<List<TwilioNumeroDisponible>> ObtenerNumerosDisponibles(string pais = "MX", int limite = 10)
+        public async Task<List<TwilioNumeroDisponible>> ObtenerNumerosDisponibles(string pais = "MX", int limite = 10, string ciudad = "")
         {
             // Configurar retry policy para resiliencia
             int maxRetries = 3;
@@ -91,13 +93,19 @@ namespace TelefonicaEmpresarial.Services
             {
                 try
                 {
-                    _logger.LogInformation($"Buscando números disponibles para el país {pais}. Intento {currentRetry + 1}/{maxRetries}");
+                    _logger.LogInformation($"Buscando números disponibles para país {pais}" +
+                        (!string.IsNullOrEmpty(ciudad) ? $" y localidad {ciudad}" : "") +
+                        $" con límite {limite}");
 
-                    // Intento para país especificado
-                    var availableNumbers = await LocalResource.ReadAsync(
-                        pathCountryCode: pais,
-                        limit: limite
-                    );
+                    // Si se especificó una ciudad, usamos la API de búsqueda por localidad
+                    var availableNumbers = string.IsNullOrEmpty(ciudad)
+                        ? await LocalResource.ReadAsync(
+                            pathCountryCode: pais,
+                            limit: limite)
+                        : await LocalResource.ReadAsync(
+                            pathCountryCode: pais,
+                            inLocality: ciudad,    // Usar el parámetro ciudad
+                            limit: limite);
 
                     var numeros = availableNumbers.Select(n => new TwilioNumeroDisponible
                     {
@@ -106,16 +114,48 @@ namespace TelefonicaEmpresarial.Services
                         Type = "local",
                         MonthlyRentalRate = GetPrecioBasePorPais(pais),
                         Voice = true,
-                        SMS = true
+                        SMS = true,
+                        // Añadir información de localidad si está disponible
+                        Locality = n.Locality ?? ciudad // Usar la localidad de Twilio o la ciudad proporcionada
                     }).ToList();
 
                     if (numeros.Any())
                     {
-                        _logger.LogInformation($"Encontrados {numeros.Count} números para {pais}");
+                        _logger.LogInformation($"Encontrados {numeros.Count} números para {pais}" +
+                            (!string.IsNullOrEmpty(ciudad) ? $" y localidad {ciudad}" : ""));
                         return numeros;
                     }
 
-                    throw new InvalidOperationException($"No se encontraron números disponibles para el país {pais}");
+                    // Si no se encontraron números con la ciudad especificada
+                    if (!string.IsNullOrEmpty(ciudad))
+                    {
+                        _logger.LogWarning($"No se encontraron números para {ciudad} en {pais}, intentando sin filtro de ciudad");
+
+                        // Intentar nuevamente sin especificar ciudad
+                        availableNumbers = await LocalResource.ReadAsync(
+                            pathCountryCode: pais,
+                            limit: limite);
+
+                        var numerosAlternativos = availableNumbers.Select(n => new TwilioNumeroDisponible
+                        {
+                            Number = n.PhoneNumber.ToString(),
+                            Country = pais,
+                            Type = "local",
+                            MonthlyRentalRate = GetPrecioBasePorPais(pais),
+                            Voice = true,
+                            SMS = true,
+                            Locality = n.Locality
+                        }).ToList();
+
+                        if (numerosAlternativos.Any())
+                        {
+                            _logger.LogInformation($"Se encontraron {numerosAlternativos.Count} números alternativos para {pais}");
+                            return numerosAlternativos;
+                        }
+                    }
+
+                    throw new InvalidOperationException($"No se encontraron números disponibles para el país {pais}" +
+                        (!string.IsNullOrEmpty(ciudad) ? $" y localidad {ciudad}" : ""));
                 }
                 catch (ApiException apiEx)
                 {
@@ -139,7 +179,8 @@ namespace TelefonicaEmpresarial.Services
                                 Type = "local",
                                 MonthlyRentalRate = GetPrecioBasePorPais("US"),
                                 Voice = true,
-                                SMS = true
+                                SMS = true,
+                                Locality = n.Locality
                             }).ToList();
 
                             if (numerosUS.Any())
@@ -770,7 +811,203 @@ namespace TelefonicaEmpresarial.Services
 
             throw new InvalidOperationException($"No se pudo configurar la URL de rechazo después de {maxRetries} intentos");
         }
+        public async Task<List<TwilioNumeroDisponible>> ObtenerNumerosPorCodigoArea(string pais, string codigoArea, int limite = 10)
+        {
+            int maxRetries = 3;
+            int currentRetry = 0;
+
+            while (currentRetry < maxRetries)
+            {
+                try
+                {
+                    _logger.LogInformation($"Buscando números disponibles para país {pais} y código de área {codigoArea}");
+
+                    // Convertir el código de área a int para usarlo con Twilio
+                    if (!int.TryParse(codigoArea, out int codigoAreaInt))
+                    {
+                        throw new ArgumentException($"El código de área '{codigoArea}' no es un número válido.");
+                    }
+
+                    // Usar el parámetro areaCode de Twilio (como int)
+                    var availableNumbers = await LocalResource.ReadAsync(
+                        pathCountryCode: pais,
+                        areaCode: codigoAreaInt,
+                        limit: limite);
+
+                    var numeros = availableNumbers.Select(n => new TwilioNumeroDisponible
+                    {
+                        Number = n.PhoneNumber.ToString(),
+                        Country = pais,
+                        Type = "local",
+                        MonthlyRentalRate = GetPrecioBasePorPais(pais),
+                        Voice = true,
+                        SMS = true,
+                        Locality = n.Locality ?? ExtractAreaCodeInfo(n.PhoneNumber.ToString(), codigoArea)
+                    }).ToList();
+
+                    if (numeros.Any())
+                    {
+                        _logger.LogInformation($"Encontrados {numeros.Count} números para código de área {codigoArea}");
+                        return numeros;
+                    }
+
+                    throw new InvalidOperationException($"No se encontraron números disponibles para el código de área {codigoArea}");
+                }
+                catch (ApiException apiEx)
+                {
+                    _logger.LogError($"Error de API Twilio para código de área {codigoArea}: {apiEx.Message}, Status: {apiEx.Status}");
+
+                    // Incrementar el contador de reintentos
+                    currentRetry++;
+
+                    if (currentRetry < maxRetries)
+                    {
+                        // Espera exponencial entre reintentos (0.5s, 1s, 2s, etc.)
+                        int delayMs = (int)Math.Pow(2, currentRetry) * 500;
+                        await Task.Delay(delayMs);
+                    }
+                    else
+                    {
+                        // Si todos los reintentos fallan, registrar y lanzar excepción
+                        throw new InvalidOperationException($"No se pudieron obtener números con código de área {codigoArea} después de {maxRetries} intentos: {apiEx.Message}", apiEx);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Error general buscando números para código de área {codigoArea}: {ex.Message}");
+
+                    // Incrementar contador de reintentos
+                    currentRetry++;
+
+                    if (currentRetry < maxRetries)
+                    {
+                        await Task.Delay(1000 * currentRetry); // Espera incremental
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"Error al buscar números para código de área {codigoArea} después de {maxRetries} intentos", ex);
+                    }
+                }
+            }
+
+            // Si llegamos aquí después de todos los reintentos, lanzar excepción
+            throw new InvalidOperationException($"No se pudieron obtener números disponibles después de {maxRetries} intentos");
+        }
+
+        // Método auxiliar para extraer información del código de área si Twilio no proporciona localidad
+        private string ExtractAreaCodeInfo(string phoneNumber, string areaCode)
+        {
+            // Mapa de códigos de área a localidades para EE.UU.
+            var areaCodeMap = new Dictionary<string, string>
+    {
+        // California
+        {"213", "Los Ángeles, CA"},
+        {"310", "Los Ángeles (Oeste), CA"},
+        {"323", "Los Ángeles (Centro), CA"},
+        {"415", "San Francisco, CA"},
+        {"510", "Oakland/Berkeley, CA"},
+        {"530", "Sacramento (Norte), CA"},
+        {"559", "Fresno, CA"},
+        {"562", "Long Beach, CA"},
+        {"619", "San Diego, CA"},
+        {"626", "Pasadena, CA"},
+        {"650", "San Mateo, CA"},
+        {"661", "Bakersfield, CA"},
+        {"707", "Santa Rosa, CA"},
+        {"714", "Anaheim, CA"},
+        {"760", "Palm Springs, CA"},
+        {"805", "Santa Barbara, CA"},
+        {"818", "Burbank/Glendale, CA"},
+        {"831", "Monterey, CA"},
+        {"858", "San Diego (Norte), CA"},
+        {"909", "San Bernardino, CA"},
+        {"916", "Sacramento, CA"},
+        {"925", "Concord, CA"},
+        {"949", "Irvine, CA"},
+        {"951", "Riverside, CA"},
+        
+        // Nueva York
+        {"212", "Nueva York (Manhattan), NY"},
+        {"315", "Syracuse, NY"},
+        {"516", "Long Island (Nassau), NY"},
+        {"518", "Albany, NY"},
+        {"585", "Rochester, NY"},
+        {"607", "Binghamton, NY"},
+        {"631", "Long Island (Suffolk), NY"},
+        {"646", "Nueva York (Manhattan), NY"},
+        {"716", "Buffalo, NY"},
+        {"718", "Nueva York (Outer Boroughs), NY"},
+        {"845", "Poughkeepsie, NY"},
+        {"914", "Westchester, NY"},
+        {"917", "Nueva York (Móvil), NY"},
+        
+        // Otras ciudades grandes
+        {"202", "Washington, DC"},
+        {"215", "Filadelfia, PA"},
+        {"267", "Filadelfia, PA"},
+        {"312", "Chicago (Centro), IL"},
+        {"404", "Atlanta, GA"},
+        {"469", "Dallas, TX"},
+        {"512", "Austin, TX"},
+        {"615", "Nashville, TN"},
+        {"702", "Las Vegas, NV"},
+        {"713", "Houston, TX"},
+        {"773", "Chicago (Afueras), IL"},
+        {"786", "Miami, FL"},
+        {"305", "Miami, FL"},
+        {"303", "Denver, CO"},
+        {"314", "St. Louis, MO"},
+        {"702", "Las Vegas, NV"},
+        {"713", "Houston, TX"},
+        {"702", "Las Vegas, NV"},
+        
+        // México
+        {"55", "Ciudad de México, MX"},
+        {"33", "Guadalajara, MX"},
+        {"81", "Monterrey, MX"},
+        {"664", "Tijuana, MX"},
+        {"998", "Cancún, MX"},
+        {"444", "San Luis Potosí, MX"},
+        {"222", "Puebla, MX"},
+        {"999", "Mérida, MX"},
+        {"477", "León, MX"},
+        {"667", "Culiacán, MX"},
+        {"614", "Chihuahua, MX"},
+        {"871", "Torreón, MX"},
+        {"229", "Veracruz, MX"},
+        {"662", "Hermosillo, MX"}
+    };
+
+            // Extraer el código de área del número si no se proporcionó uno
+            if (string.IsNullOrEmpty(areaCode) && phoneNumber.StartsWith("+"))
+            {
+                // Intentar extraer el código de área
+                if (phoneNumber.StartsWith("+1") && phoneNumber.Length >= 12)
+                {
+                    // Para números de EE.UU., el código de área son los siguientes 3 dígitos
+                    areaCode = phoneNumber.Substring(2, 3);
+                }
+                else if (phoneNumber.StartsWith("+52") && phoneNumber.Length >= 12)
+                {
+                    // Para números de México, el código de área varía (2-3 dígitos)
+                    // Para simplificar, tomamos hasta 3 dígitos después del +52
+                    areaCode = phoneNumber.Length >= 15 ? phoneNumber.Substring(3, 3) : phoneNumber.Substring(3, 2);
+                }
+            }
+
+            // Buscar en el mapa de códigos
+            if (!string.IsNullOrEmpty(areaCode) && areaCodeMap.TryGetValue(areaCode, out var locality))
+            {
+                return locality;
+            }
+
+            // Si no se encuentra, devolver el código de área como información
+            return $"Código de área: {areaCode}";
+        }
     }
+
+
+
 
     // Clases para mapear respuestas y datos
     public class TwilioNumeroDisponible
@@ -781,6 +1018,7 @@ namespace TelefonicaEmpresarial.Services
         public decimal MonthlyRentalRate { get; set; }
         public bool Voice { get; set; }
         public bool SMS { get; set; }
+        public string? Locality { get; set; }
     }
 
     public class TwilioNumeroComprado
