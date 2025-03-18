@@ -613,17 +613,122 @@ namespace TelefonicaEmpresarial.Services
                     case "checkout.session.completed":
                         var sesionCompletada = stripeEvent.Data.Object as Session;
 
-                        // Verificar si es una sesión de recarga
-                        if (sesionCompletada?.Metadata?.TryGetValue("TipoTransaccion", out var tipoTransaccion) == true
-                            && tipoTransaccion == "RecargaSaldo")
+                        if (sesionCompletada == null)
                         {
-                            // Procesar como recarga de saldo
-                            await ProcesarRecargaSaldo(sesionCompletada.Id);
+                            _logger.LogWarning("Sesión completada nula en webhook");
+                            break;
                         }
-                        else
+
+                        _logger.LogInformation($"Procesando sesión completada {sesionCompletada.Id}");
+
+                        try
                         {
-                            // Procesar como una compra normal
-                            await ManejarSesionCompletada(sesionCompletada);
+                            // Verificar si la sesión ya fue procesada anteriormente (idempotencia)
+                            if (await VerificarTransaccionYaProcesada(sesionCompletada.Id, null))
+                            {
+                                _logger.LogInformation($"Sesión {sesionCompletada.Id} ya fue procesada anteriormente, omitiendo");
+                                break;
+                            }
+
+                            // Extraer información de la metadata
+                            string tipoTransaccion = "";
+                            sesionCompletada.Metadata?.TryGetValue("TipoTransaccion", out tipoTransaccion);
+
+                            _logger.LogInformation($"Procesando sesión de tipo: {tipoTransaccion}");
+
+                            if (tipoTransaccion == "RecargaSaldo")
+                            {
+                                // Recarga simple de saldo
+                                await ProcesarRecargaSaldo(sesionCompletada.Id);
+                            }
+                            else if (tipoTransaccion == "SuscripcionRecargaSaldo")
+                            {
+                                // Recarga recurrente - procesar primer pago inmediatamente
+                                await ProcesarPrimerPagoSuscripcionRecarga(sesionCompletada);
+                            }
+                            else
+                            {
+                                // Buscar la transacción asociada a esta sesión
+                                var transaccion = await _context.Transacciones
+                                    .Include(t => t.NumeroTelefonico)
+                                    .FirstOrDefaultAsync(t => t.StripePaymentId == sesionCompletada.Id);
+
+                                if (transaccion == null)
+                                {
+                                    // Si no existe una transacción previa, podría ser una compra iniciada
+                                    // pero no completada. En este caso, necesitamos datos adicionales.
+                                    if (sesionCompletada.Metadata?.TryGetValue("NumeroTelefono", out var numeroTelefono) == true)
+                                    {
+                                        var customerId = sesionCompletada.CustomerId;
+                                        var usuario = await _context.Users.FirstOrDefaultAsync(u => u.StripeCustomerId == customerId);
+
+                                        if (usuario != null)
+                                        {
+                                            // Extraer datos de la sesión para procesar la compra
+                                            bool incluirSMS = sesionCompletada.Metadata.TryGetValue("IncluirSMS", out var incluirSMSValue)
+                                                && incluirSMSValue == "true";
+
+                                            // Obtener servicio de telefonía para procesar la compra
+                                            var telefoniaService = _serviceProvider.GetRequiredService<ITelefonicaService>();
+
+                                            // Procesar la compra directamente desde el webhook
+                                            await telefoniaService.ProcesarCompraNumero(
+                                                usuario,
+                                                numeroTelefono,
+                                                null, // Número de redirección (el usuario lo configurará después)
+                                                incluirSMS,
+                                                sesionCompletada.Id,
+                                                sesionCompletada.SubscriptionId
+                                            );
+                                        }
+                                        else
+                                        {
+                                            _logger.LogWarning($"No se encontró usuario para el cliente {customerId}");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        _logger.LogWarning($"No se encontró transacción ni metadata para la sesión {sesionCompletada.Id}");
+                                    }
+                                    break;
+                                }
+
+                                // Actualizar la transacción existente
+                                transaccion.Status = "Completado";
+
+                                // Si tu modelo de Transaccion tiene FechaCompletado, usa esto:
+                                transaccion.FechaCompletado = DateTime.UtcNow;
+
+                                // Si es una suscripción, guardar el ID y activar el número
+                                if (sesionCompletada.SubscriptionId != null && transaccion.NumeroTelefonico != null)
+                                {
+                                    transaccion.NumeroTelefonico.StripeSubscriptionId = sesionCompletada.SubscriptionId;
+                                    transaccion.NumeroTelefonico.Activo = true;
+                                    transaccion.NumeroTelefonico.FechaExpiracion = DateTime.UtcNow.AddMonths(1);
+
+                                    // Configurar el número en Twilio si es necesario
+                                    if (!string.IsNullOrEmpty(transaccion.NumeroTelefonico.NumeroRedireccion) &&
+                                        transaccion.NumeroTelefonico.NumeroRedireccion != "pendiente")
+                                    {
+                                        var twilioService = _serviceProvider.GetRequiredService<ITwilioService>();
+                                        await twilioService.ConfigurarRedireccion(
+                                            transaccion.NumeroTelefonico.PlivoUuid,
+                                            transaccion.NumeroTelefonico.NumeroRedireccion
+                                        );
+
+                                        if (transaccion.NumeroTelefonico.SMSHabilitado)
+                                        {
+                                            await twilioService.ActivarSMS(transaccion.NumeroTelefonico.PlivoUuid);
+                                        }
+                                    }
+                                }
+
+                                await _context.SaveChangesAsync();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, $"Error al manejar sesión completada: {ex.Message}");
                         }
                         break;
 
@@ -652,10 +757,110 @@ namespace TelefonicaEmpresarial.Services
             }
         }
 
-        // Método para verificar si un evento ya fue procesado (idempotencia)
-        // Mejoras en los métodos de idempotencia en StripeService.cs
+        private async Task ProcesarPrimerPagoSuscripcionRecarga(Session sesion)
+        {
+            try
+            {
+                _logger.LogInformation($"Procesando primer pago de suscripción de recarga para sesión {sesion.Id}");
 
-        // 1. Mejorar el método para verificar si un evento ya fue procesado
+                // Verificar si la sesión ya fue procesada anteriormente (idempotencia)
+                bool transaccionExistente = await _saldoService.ExisteTransaccion(sesion.Id);
+                if (transaccionExistente)
+                {
+                    _logger.LogInformation($"La sesión {sesion.Id} ya fue procesada anteriormente");
+                    return;
+                }
+
+                // Obtener el ID del cliente y el usuario
+                var customerId = sesion.CustomerId;
+                var usuario = await _context.Users.FirstOrDefaultAsync(u => u.StripeCustomerId == customerId);
+
+                if (usuario == null)
+                {
+                    _logger.LogWarning($"No se encontró usuario para el cliente {customerId}");
+                    return;
+                }
+
+                // Calcular monto (Stripe usa centavos)
+                decimal monto;
+                if (sesion.AmountTotal.HasValue)
+                {
+                    monto = (decimal)sesion.AmountTotal.Value / 100;
+                }
+                else
+                {
+                    // Si no hay AmountTotal, intentar obtenerlo de los line items
+                    var lineItems = sesion.LineItems?.Data;
+                    if (lineItems != null && lineItems.Any())
+                    {
+                        var item = lineItems.First();
+                        monto = (decimal)item.AmountTotal / 100;
+
+                    }
+                    else if (sesion.Metadata?.TryGetValue("MontoMensual", out var montoStr) == true)
+                    {
+                        // Intentar obtenerlo de los metadatos
+                        if (decimal.TryParse(montoStr, out var montoParseado))
+                        {
+                            monto = montoParseado;
+                        }
+                        else
+                        {
+                            _logger.LogWarning($"No se pudo determinar el monto para la sesión {sesion.Id}");
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"No se pudo determinar el monto para la sesión {sesion.Id}");
+                        return;
+                    }
+                }
+
+                // Registrar la recarga
+                using var dbTransaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    // Agregar saldo
+                    var resultado = await _saldoService.AgregarSaldo(
+                        usuario.Id,
+                        monto,
+                        "Primer pago de suscripción de recarga automática",
+                        sesion.Id,
+                        dbTransaction
+                    );
+
+                    if (resultado)
+                    {
+                        await dbTransaction.CommitAsync();
+                        _logger.LogInformation($"Primer pago de suscripción de recarga: ${monto} procesado correctamente para usuario {usuario.Id}");
+
+                        // Actualizar el monitoreo de transacciones
+                        var monitorService = _serviceProvider.GetRequiredService<ITransaccionMonitorService>();
+                        await monitorService.ActualizarEstadoTransaccion(
+                            sesion.Id,
+                            "Completada",
+                            "Primer pago de suscripción procesado"
+                        );
+                    }
+                    else
+                    {
+                        await dbTransaction.RollbackAsync();
+                        _logger.LogError($"Error al procesar primer pago de suscripción para sesión {sesion.Id}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    await dbTransaction.RollbackAsync();
+                    _logger.LogError(ex, $"Error en transacción al procesar primer pago de suscripción para sesión {sesion.Id}");
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error general al procesar primer pago de suscripción para sesión {sesion.Id}");
+            }
+        }
         private async Task<bool> VerificarEventoProcesado(string eventId)
         {
             try
