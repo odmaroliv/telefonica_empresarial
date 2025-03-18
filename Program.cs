@@ -10,6 +10,7 @@ using System.Threading.RateLimiting;
 using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data;
 using TelefonicaEmpresaria.Models;
 using TelefonicaEmpresaria.Services;
+using TelefonicaEmpresaria.Services.BackgroundJobs;
 using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services;
 using TelefonicaEmpresarial.Areas.Identity;
 using TelefonicaEmpresarial.Middleware;
@@ -77,7 +78,8 @@ builder.Services.AddHealthChecks()
     // Agrega otros servicios críticos
     .AddUrlGroup(new Uri("https://api.twilio.com/"), "twilio-api")
     .AddUrlGroup(new Uri("https://status.stripe.com/"), "stripe-status")
-    .AddCheck<QuartzJobsHealthCheck>("quartz-jobs");
+    .AddCheck<QuartzJobsHealthCheck>("quartz-jobs")
+    .AddCheck<TransaccionesMonitorHealthCheck>("transacciones-monitor-job");
 
 
 // Configuración de Health Checks UI
@@ -147,6 +149,8 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
+
+
 // Configuración de páginas Razor y Blazor Server
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
@@ -159,6 +163,11 @@ builder.Services.AddScoped<ISaldoService, SaldoService>();
 builder.Services.AddScoped<IRequisitosRegulatoriosService, RequisitosRegulatoriosService>();
 builder.Services.AddScoped<IValidationService, ValidationService>();
 builder.Services.AddScoped<ILlamadasService, LlamadasService>();
+builder.Services.AddScoped<NavMenuService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IAdminLogService, AdminLogService>();
+builder.Services.AddScoped<ITransaccionMonitorService, TransaccionMonitorService>();
+
 
 
 // Configuración de CORS si es necesario
@@ -177,10 +186,10 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddQuartz(q =>
 {
-    // Configuración base
+    // Mantén la configuración existente
     q.UseMicrosoftDependencyInjectionJobFactory();
 
-    // Configurar LimpiezaDatosJob
+    // Aquí están tus jobs existentes (no modificar)
     var limpiezaJobKey = new JobKey("LimpiezaDatos");
     q.AddJob<LimpiezaDatosJob>(opts => opts.WithIdentity(limpiezaJobKey));
     q.AddTrigger(opts => opts
@@ -188,35 +197,35 @@ builder.Services.AddQuartz(q =>
         .WithIdentity("LimpiezaDatos-Trigger")
         .WithCronSchedule("0 0 3 * * ?")); // Ejecutar a las 3 AM todos los días
 
-    // Configurar RenovacionNumerosJob
     var renovacionJobKey = new JobKey("RenovacionNumeros");
     q.AddJob<RenovacionNumerosJob>(opts => opts.WithIdentity(renovacionJobKey));
     q.AddTrigger(opts => opts
         .ForJob(renovacionJobKey)
         .WithIdentity("RenovacionNumeros-Trigger")
         .WithCronSchedule("0 0 2 * * ?")); // Ejecutar a las 2 AM todos los días
-});
 
-builder.Services.AddQuartz(q =>
-{
-    var jobKey = new JobKey("LlamadasMonitorJob");
-
-    q.AddJob<LlamadasMonitorJob>(opts => opts.WithIdentity(jobKey));
-
-    // Programar para que se ejecute cada minuto
+    var llamadasMonitorJobKey = new JobKey("LlamadasMonitorJob");
+    q.AddJob<LlamadasMonitorJob>(opts => opts.WithIdentity(llamadasMonitorJobKey));
     q.AddTrigger(opts => opts
-        .ForJob(jobKey)
+        .ForJob(llamadasMonitorJobKey)
         .WithIdentity("LlamadasMonitorJob-Trigger")
         .WithSimpleSchedule(x => x
             .WithIntervalInSeconds(60)
             .RepeatForever()));
-    // En Program.cs
     q.AddTrigger(opts => opts
-        .ForJob(jobKey)
+        .ForJob(llamadasMonitorJobKey)
         .WithIdentity("VerificarSaldoLlamadasActivas-Trigger")
         .WithSimpleSchedule(x => x
             .WithIntervalInSeconds(30)
             .RepeatForever()));
+
+    // AÑADIR AQUÍ: Configuración para el nuevo job de monitoreo de transacciones
+    var transaccionesMonitorJobKey = new JobKey("TransaccionesMonitorJob");
+    q.AddJob<TransaccionesMonitorJob>(opts => opts.WithIdentity(transaccionesMonitorJobKey));
+    q.AddTrigger(opts => opts
+        .ForJob(transaccionesMonitorJobKey)
+        .WithIdentity("TransaccionesMonitor-Trigger")
+        .WithCronSchedule("0 0/30 * * * ?")); // Ejecutar cada 30 minutos
 });
 
 builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);

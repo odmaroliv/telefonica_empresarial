@@ -1,0 +1,359 @@
+﻿@page "/admin/configuracion"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data
+@using TelefonicaEmpresaria.Models
+@attribute [Authorize(Roles = "Admin")]
+@inject ApplicationDbContext DbContext
+@inject INotificationService NotifiService
+
+<div class="bg-white rounded-lg shadow-md">
+    <div class="p-4 border-b">
+        <h4 class="text-xl font-semibold text-gray-800">Configuración del Sistema</h4>
+    </div>
+    <div class="p-6">
+        @if (loading)
+        {
+            <div class="flex justify-center my-12">
+                <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+        }
+        else
+        {
+            <div class="grid md:grid-cols-12 gap-6">
+                <div class="md:col-span-8">
+                    <div class="mb-4">
+                        <button @onclick="AddNewConfig" class="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
+                            </svg>
+                            Agregar Nueva Configuración
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Clave</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descripción</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                @foreach (var config in configuraciones)
+                                {
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">@config.Clave</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">@config.Valor</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">@config.Descripcion</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium flex space-x-2">
+                                            <button @onclick="() => EditConfig(config)" class="text-blue-600 hover:text-blue-900">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                                                </svg>
+                                            </button>
+                                            <button @onclick="() => DeleteConfig(config)" class="text-red-600 hover:text-red-900">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                                </svg>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="md:col-span-4">
+                    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                        <div class="bg-gray-100 p-4 border-b">
+                            <h5 class="text-lg font-semibold text-gray-800">Ayuda</h5>
+                        </div>
+                        <div class="p-6">
+                            <p class="mb-4 text-gray-600">Las configuraciones del sistema determinan cómo funciona la plataforma:</p>
+                            <ul class="space-y-2 text-sm text-gray-700 mb-4">
+                                <li><strong>MargenGanancia</strong>: Factor multiplicador sobre el costo del proveedor</li>
+                                <li><strong>MargenGananciaSMS</strong>: Factor para el servicio de SMS</li>
+                                <li><strong>MargenGananciaLlamadas</strong>: Factor para minutos de llamadas</li>
+                                <li><strong>IVA</strong>: Impuesto al Valor Agregado (ejemplo: 0.16 = 16%)</li>
+                                <li><strong>CostoMinimoNumero</strong>: Costo mínimo mensual para números telefónicos</li>
+                                <li><strong>CostoMinimoSMS</strong>: Costo mínimo mensual para servicio SMS</li>
+                            </ul>
+                            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                                <div class="flex items-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-yellow-400 mr-3" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                    </svg>
+                                    <p class="text-yellow-700 text-sm">
+                                        Cambiar estos valores afectará directamente la facturación y operación del sistema.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showEditModal)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto outline-none focus:outline-none">
+        <div class="relative w-auto max-w-3xl mx-auto my-6">
+            <div class="relative flex flex-col w-full bg-white border-0 rounded-lg shadow-lg outline-none focus:outline-none">
+                <div class="flex items-start justify-between p-5 border-b border-solid rounded-t border-blueGray-200">
+                    <h5 class="text-xl font-semibold">@(isNew ? "Agregar Configuración" : "Editar Configuración")</h5>
+                    <button @onclick="CloseModal" class="float-right text-3xl leading-none font-semibold outline-none focus:outline-none">
+                        <span class="text-gray-500 h-6 w-6 text-2xl block outline-none focus:outline-none">×</span>
+                    </button>
+                </div>
+                <div class="relative p-6 flex-auto">
+                    <EditForm Model="@editConfig" OnValidSubmit="SaveConfig" class="space-y-4">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary class="text-red-600" />
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Clave</label>
+                            <InputText class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" 
+                                       @bind-Value="editConfig.Clave" 
+                                       disabled="@(!isNew)" />
+                            <ValidationMessage For="@(() => editConfig.Clave)" class="text-red-600 text-sm mt-1" />
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Valor</label>
+                            <InputText class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" 
+                                       @bind-Value="editConfig.Valor" />
+                            <ValidationMessage For="@(() => editConfig.Valor)" class="text-red-600 text-sm mt-1" />
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Descripción</label>
+                            <InputTextArea class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" 
+                                           @bind-Value="editConfig.Descripcion" 
+                                           rows="3" />
+                            <ValidationMessage For="@(() => editConfig.Descripcion)" class="text-red-600 text-sm mt-1" />
+                        </div>
+                        
+                        <div class="flex justify-end space-x-2">
+                            <button type="button" 
+                                    @onclick="CloseModal" 
+                                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                                Cancelar
+                            </button>
+                            <button type="submit" 
+                                    class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700">
+                                Guardar
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="fixed inset-0 z-40 bg-black opacity-25"></div>
+}
+
+@if (showDeleteModal)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto outline-none focus:outline-none">
+        <div class="relative w-auto max-w-3xl mx-auto my-6">
+            <div class="relative flex flex-col w-full bg-white border-0 rounded-lg shadow-lg outline-none focus:outline-none">
+                <div class="flex items-start justify-between p-5 border-b border-solid rounded-t border-blueGray-200">
+                    <h5 class="text-xl font-semibold">Confirmar Eliminación</h5>
+                    <button @onclick="CloseModal" class="float-right text-3xl leading-none font-semibold outline-none focus:outline-none">
+                        <span class="text-gray-500 h-6 w-6 text-2xl block outline-none focus:outline-none">×</span>
+                    </button>
+                </div>
+                <div class="relative p-6 flex-auto">
+                    <p class="mb-4 text-gray-700">
+                        ¿Está seguro que desea eliminar la configuración <strong>@selectedConfig?.Clave</strong>?
+                    </p>
+                    <div class="bg-red-50 border-l-4 border-red-400 p-4 mb-4">
+                        <div class="flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-400 mr-3" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                            </svg>
+                            <p class="text-red-700 text-sm">
+                                Eliminar configuraciones del sistema puede afectar el funcionamiento de la plataforma.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex justify-end space-x-2">
+                        <button @onclick="CloseModal" 
+                                class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                            Cancelar
+                        </button>
+                        <button @onclick="ConfirmDeleteConfig" 
+                                class="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700">
+                            Eliminar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="fixed inset-0 z-40 bg-black opacity-25"></div>
+}
+
+@if (showDeleteModal)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirmar Eliminación</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>
+                        ¿Está seguro que desea eliminar la configuración <strong>@selectedConfig?.Clave</strong>?
+                    </p>
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Eliminar configuraciones del sistema puede afectar el funcionamiento de la plataforma.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancelar</button>
+                    <button type="button" class="btn btn-danger" @onclick="ConfirmDeleteConfig">Eliminar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private List<ConfiguracionSistema> configuraciones = new();
+    private bool loading = true;
+    
+    // Modales
+    private bool showEditModal = false;
+    private bool showDeleteModal = false;
+    private ConfiguracionSistema selectedConfig;
+    private ConfiguracionSistema editConfig = new();
+    private bool isNew = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        
+        configuraciones = await DbContext.ConfiguracionesSistema
+            .OrderBy(c => c.Clave)
+            .ToListAsync();
+            
+        loading = false;
+    }
+
+    private void AddNewConfig()
+    {
+        isNew = true;
+        editConfig = new ConfiguracionSistema();
+        showEditModal = true;
+    }
+
+    private void EditConfig(ConfiguracionSistema config)
+    {
+        isNew = false;
+        selectedConfig = config;
+        editConfig = new ConfiguracionSistema
+        {
+            Id = config.Id,
+            Clave = config.Clave,
+            Valor = config.Valor,
+            Descripcion = config.Descripcion
+        };
+        
+        showEditModal = true;
+    }
+
+    private void DeleteConfig(ConfiguracionSistema config)
+    {
+        selectedConfig = config;
+        showDeleteModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showEditModal = false;
+        showDeleteModal = false;
+    }
+
+    private async Task SaveConfig()
+    {
+        try
+        {
+            if (isNew)
+            {
+                // Verificar si la clave ya existe
+                if (configuraciones.Any(c => c.Clave == editConfig.Clave))
+                {
+                    NotifiService.ShowNotification("Ya existe una configuración con esa clave");
+                    return;
+                }
+                
+                DbContext.ConfiguracionesSistema.Add(editConfig);
+            }
+            else
+            {
+                var config = await DbContext.ConfiguracionesSistema.FindAsync(editConfig.Id);
+                if (config == null)
+                {
+                    NotifiService.ShowNotification("No se encontró la configuración");
+                    return;
+                }
+
+                config.Valor = editConfig.Valor;
+                config.Descripcion = editConfig.Descripcion;
+            }
+
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+
+            NotifiService.ShowNotification("Configuración guardada correctamente");
+            showEditModal = false;
+        }
+        catch (Exception ex)
+        {
+            NotifiService.ShowNotification($"Error al guardar: {ex.Message}");
+        }
+    }
+
+    private async Task ConfirmDeleteConfig()
+    {
+        if (selectedConfig == null)
+            return;
+
+        try
+        {
+            var config = await DbContext.ConfiguracionesSistema.FindAsync(selectedConfig.Id);
+            if (config == null)
+            {
+                NotifiService.ShowNotification("No se encontró la configuración");
+                return;
+            }
+
+            DbContext.ConfiguracionesSistema.Remove(config);
+            await DbContext.SaveChangesAsync();
+
+            await LoadData();
+
+            NotifiService.ShowNotification("Configuración eliminada correctamente");
+            showDeleteModal = false;
+        }
+        catch (Exception ex)
+        {
+            NotifiService.ShowNotification($"Error al eliminar: {ex.Message}");
+        }
+    }
+}

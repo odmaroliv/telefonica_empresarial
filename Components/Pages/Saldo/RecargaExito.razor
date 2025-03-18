@@ -6,6 +6,7 @@
 @using Microsoft.AspNetCore.WebUtilities
 @using TelefonicaEmpresaria.Models
 @using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services
+@using TelefonicaEmpresaria.Services
 @using TelefonicaEmpresarial.Services
 @attribute [Authorize]
 @inject UserManager<ApplicationUser> UserManager
@@ -21,7 +22,7 @@
             @if (procesando)
             {
                 <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mx-auto mb-6"></div>
-                <h2 class="text-2xl font-bold text-gray-800 mb-2">Procesando tu recarga</h2>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Verificando tu recarga</h2>
                 <p class="text-gray-600">
                     Estamos confirmando tu pago.<br />
                     Por favor espera un momento...
@@ -102,8 +103,8 @@
                 sessionId = sessionIdValue;
                 Logger.LogInformation($"Session ID recibido: {sessionId}");
 
-                // Procesar la recarga
-                await ProcesarRecarga();
+                // SÓLO verificar el estado del pago y mostrar información
+                await VerificarEstadoPago();
             }
             else
             {
@@ -122,7 +123,7 @@
         }
     }
 
-    private async Task ProcesarRecarga()
+    private async Task VerificarEstadoPago()
     {
         if (string.IsNullOrEmpty(sessionId))
         {
@@ -141,27 +142,8 @@
                 error = "No se pudo verificar tu identidad.";
                 return;
             }
-            // PRIMERO verifica si la transacción ya fue procesada
-            bool transaccionExistente = await SaldoService.ExisteTransaccion(sessionId);
 
-            if (transaccionExistente)
-            {
-                // La transacción ya fue procesada, solo obtén el saldo actual
-                saldoActual = await SaldoService.ObtenerSaldoUsuario(user.Id);
-                Logger.LogInformation($"La transacción {sessionId} ya fue procesada anteriormente");
-                return; // Importante: salir del método para evitar doble procesamiento
-            }
-
-            // Verificar que el pago se completó correctamente
-            var pagoCompletado = await StripeService.VerificarPagoCompletado(sessionId);
-
-            if (!pagoCompletado)
-            {
-                error = "El pago no se ha completado correctamente. Por favor, contacta a soporte.";
-                return;
-            }
-
-            // Obtener detalles de la sesión
+            // Verificar que la sesión existe y está pagada
             var sesionStripe = await StripeService.ObtenerDetallesSesion(sessionId);
 
             if (sesionStripe == null)
@@ -170,42 +152,36 @@
                 return;
             }
 
+            if (sesionStripe.PaymentStatus != "paid")
+            {
+                error = "El pago está siendo procesado. Tu saldo será actualizado una vez confirmado el pago.";
+                return;
+            }
+
             // Calcular el monto de la recarga (dividir por 100 porque Stripe usa centavos)
             montoRecarga = (decimal)sesionStripe.AmountTotal / 100;
 
-            // Verificar si ya se procesó la transacción
-            // Como no tenemos acceso directo a _context, usamos el SaldoService para verificar
-            var movimientos = await SaldoService.ObtenerMovimientosUsuario(user.Id, 10);
-            var movimientoProcesado = movimientos.Any(m => m.ReferenciaExterna == sessionId);
+            // Verificar si la transacción ya fue procesada por el webhook
+            bool transaccionExistente = await SaldoService.ExisteTransaccion(sessionId);
 
-            if (!movimientoProcesado)
+            if (transaccionExistente)
             {
-                // El webhook aún no ha procesado la transacción
-                // Procesamos manualmente si el webhook no lo ha hecho
-                var concepto = "Recarga de saldo";
-                var recargaExitosa = await SaldoService.AgregarSaldo(user.Id, montoRecarga, concepto, sessionId);
-
-                if (!recargaExitosa)
-                {
-                    error = "Ocurrió un error al actualizar tu saldo. Contacta a soporte.";
-                    Logger.LogError($"Error al agregar saldo para usuario {user.Id}, monto: {montoRecarga}");
-                    return;
-                }
-
-                Logger.LogInformation($"Recarga exitosa de ${montoRecarga} para usuario {user.Id} desde la página de éxito");
+                // El webhook ya procesó esta transacción, sólo mostramos los datos
+                Logger.LogInformation($"La transacción {sessionId} ya fue procesada por el webhook");
             }
             else
             {
-                Logger.LogInformation($"La recarga para la sesión {sessionId} ya fue procesada anteriormente");
+                // IMPORTANTE: No procesamos la recarga aquí - sólo mostramos mensaje informativo
+                Logger.LogInformation($"La transacción {sessionId} está pendiente de procesamiento por webhook");
             }
 
-            // Obtener el saldo actualizado
+            // Obtener el saldo actualizado para mostrar al usuario
             saldoActual = await SaldoService.ObtenerSaldoUsuario(user.Id);
         }
         catch (Exception ex)
         {
-            error = $"Ocurrió un error al procesar tu recarga: {ex.Message}";
-            Logger.LogError(ex, "Error al procesar recarga");
+            error = $"Ocurrió un error al verificar tu pago: {ex.Message}";
+            Logger.LogError(ex, "Error al verificar estado de pago");
         }
     }
 

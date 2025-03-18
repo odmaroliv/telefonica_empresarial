@@ -1,0 +1,517 @@
+﻿@page "/admin/transacciones-monitor"
+@namespace TelefonicaEmpresaria.Components.Pages.Admin
+@using Microsoft.AspNetCore.Authorization
+@using TelefonicaEmpresaria.Models
+@using TelefonicaEmpresaria.Services
+@using TelefonicaEmpresaria.Services.BackgroundJobs
+@using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services
+@using TelefonicaEmpresarial.Services
+@attribute [Authorize(Roles = "Admin")]
+@inject ITransaccionMonitorService TransaccionMonitorService
+@inject IStripeService StripeService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ILogger<TransaccionesMonitor> _logger
+@inject ISaldoService SaldoService
+
+<div class="container mx-auto px-4 py-6">
+    <div class="bg-white rounded-lg shadow-md mb-6">
+        <div class="p-6 border-b flex justify-between items-center">
+            <h4 class="text-2xl font-semibold text-gray-800">Monitoreo de Transacciones</h4>
+            <div class="flex space-x-4">
+                <button @onclick="RefreshData" class="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+                    </svg>
+                    Actualizar
+                </button>
+            </div>
+        </div>
+
+        <div class="p-6">
+            @if (loading)
+            {
+                <div class="flex justify-center my-12">
+                    <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                </div>
+            }
+            else if (transacciones == null || !transacciones.Any())
+            {
+                <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+                    <p class="text-blue-700">No hay transacciones para mostrar en el período seleccionado.</p>
+                </div>
+            }
+            else
+            {
+                <div class="space-y-6">
+                    <div class="flex space-x-4 mb-4">
+                        <div>
+                            <select @bind="filtroEstado" class="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="">Todos los estados</option>
+                                <option value="Iniciada">Iniciada</option>
+                                <option value="ProcesandoWebhook">Procesando Webhook</option>
+                                <option value="EnEspera">En Espera</option>
+                                <option value="RequiereRevisión">Requiere Revisión</option>
+                                <option value="Completada">Completada</option>
+                                <option value="Fallida">Fallida</option>
+                            </select>
+                        </div>
+                        <div>
+                            <select @bind="filtroTipo" class="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="">Todos los tipos</option>
+                                <option value="RecargaSaldo">Recarga de Saldo</option>
+                                <option value="CompraNumero">Compra de Número</option>
+                            </select>
+                        </div>
+                        <div>
+                            <select value="@filtroPeriodo" @onchange="HandlePeriodoChange" class="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="24">Últimas 24 horas</option>
+                                <option value="48">Últimas 48 horas</option>
+                                <option value="72">Últimos 3 días</option>
+                                <option value="168">Última semana</option>
+                            </select>
+                        </div>
+                        <button @onclick="AplicarFiltros" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                            Filtrar
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuario</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monto</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha Creación</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                @foreach (var transaccion in transaccionesFiltradas)
+                                {
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">@transaccion.Id</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">@transaccion.TipoOperacion</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">@transaccion.UserId</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$@transaccion.Monto.ToString("F2")</td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="@GetEstadoBadgeClass(transaccion.Estado) px-2 py-1 rounded-full text-xs">
+                                                @transaccion.Estado
+                                            </span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            @transaccion.FechaCreacion.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                            <div class="flex space-x-2">
+                                                <button @onclick="() => VerDetalles(transaccion)" class="text-blue-600 hover:text-blue-900" title="Ver Detalles">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                                                        <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
+                                                    </svg>
+                                                </button>
+
+                                                @if (transaccion.Estado == "RequiereRevisión" || transaccion.Estado == "Fallida")
+                                                {
+                                                    <button @onclick="() => VerificarTansaccion(transaccion)" class="text-green-600 hover:text-green-900" title="Verificar Estado en Stripe">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                            <path fill-rule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                                        </svg>
+                                                    </button>
+                                                }
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (selectedTransaccion != null && showDetailsModal)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto outline-none focus:outline-none">
+        <div class="relative w-full max-w-lg mx-auto my-6">
+            <div class="relative flex flex-col w-full bg-white border-0 rounded-lg shadow-lg outline-none focus:outline-none">
+                <div class="flex items-start justify-between p-5 border-b border-solid rounded-t border-blueGray-200">
+                    <h5 class="text-xl font-semibold text-gray-800">Detalles de Transacción</h5>
+                    <button @onclick="CloseModal" class="text-gray-500 hover:text-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="relative p-6 flex-auto">
+                    <div class="space-y-4">
+                        <div>
+                            <strong class="text-gray-700">ID:</strong>
+                            <p class="text-gray-600">@selectedTransaccion.Id</p>
+                        </div>
+                        <div>
+                            <strong class="text-gray-700">Tipo de Operación:</strong>
+                            <p class="text-gray-600">@selectedTransaccion.TipoOperacion</p>
+                        </div>
+                        <div>
+                            <strong class="text-gray-700">Referencia Externa:</strong>
+                            <p class="text-gray-600">@selectedTransaccion.ReferenciaExterna</p>
+                        </div>
+                        <div>
+                            <strong class="text-gray-700">Usuario ID:</strong>
+                            <p class="text-gray-600">@selectedTransaccion.UserId</p>
+                        </div>
+                        <div>
+                            <strong class="text-gray-700">Monto:</strong>
+                            <p class="text-gray-600">$@selectedTransaccion.Monto.ToString("F2")</p>
+                        </div>
+                        <div>
+                            <strong class="text-gray-700">Estado:</strong>
+                            <p>
+                                <span class="@GetEstadoBadgeClass(selectedTransaccion.Estado) px-2 py-1 rounded-full text-xs">
+                                    @selectedTransaccion.Estado
+                                </span>
+                            </p>
+                        </div>
+                        @if (!string.IsNullOrEmpty(selectedTransaccion.DetalleError))
+                        {
+                            <div>
+                                <strong class="text-gray-700">Detalle de Error:</strong>
+                                <p class="text-red-600">@selectedTransaccion.DetalleError</p>
+                            </div>
+                        }
+                        <div>
+                            <strong class="text-gray-700">Fecha de Creación:</strong>
+                            <p class="text-gray-600">@selectedTransaccion.FechaCreacion.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</p>
+                        </div>
+                        @if (selectedTransaccion.FechaActualizacion.HasValue)
+                        {
+                            <div>
+                                <strong class="text-gray-700">Última Actualización:</strong>
+                                <p class="text-gray-600">@selectedTransaccion.FechaActualizacion.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</p>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(selectedTransaccion.DatosRequest))
+                        {
+                            <div>
+                                <strong class="text-gray-700">Datos de la Solicitud:</strong>
+                                <pre class="bg-gray-100 p-3 rounded text-xs mt-1 overflow-x-auto">@selectedTransaccion.DatosRequest</pre>
+                            </div>
+                        }
+
+                        @if (stripeSessionInfo != null)
+                        {
+                            <div class="mt-6">
+                                <strong class="text-gray-700">Información de Stripe:</strong>
+                                <div class="bg-gray-100 p-3 rounded mt-1">
+                                    <div class="grid grid-cols-2 gap-2 text-sm">
+                                        <div class="text-gray-600">ID de Sesión:</div>
+                                        <div>@stripeSessionInfo.Id</div>
+
+                                        <div class="text-gray-600">Estado de Pago:</div>
+                                        <div>@stripeSessionInfo.PaymentStatus</div>
+
+                                        <div class="text-gray-600">Monto Total:</div>
+                                        <div>$@((stripeSessionInfo.AmountTotal / 100m).ToString("F2"))</div>
+
+                                        <div class="text-gray-600">Moneda:</div>
+                                        <div>@stripeSessionInfo.Currency.ToUpper()</div>
+
+                                        <div class="text-gray-600">Cliente:</div>
+                                        <div>@stripeSessionInfo.CustomerId</div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="flex items-center justify-end p-6 border-t border-solid rounded-b border-blueGray-200">
+                    @if (selectedTransaccion.Estado == "RequiereRevisión" || selectedTransaccion.Estado == "Fallida")
+                    {
+                        <button @onclick="ProcessarManualmente" class="mr-3 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 focus:outline-none">
+                            Procesar Manualmente
+                        </button>
+                    }
+                    <button @onclick="CloseModal" class="px-4 py-2 bg-gray-200 text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-300 focus:outline-none">
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="fixed inset-0 z-40 bg-black opacity-25"></div>
+}
+
+@code {
+    private bool loading = true;
+    private List<TransaccionAuditoria> transacciones = new();
+    private List<TransaccionAuditoria> transaccionesFiltradas = new();
+    private bool showDetailsModal = false;
+    private TransaccionAuditoria selectedTransaccion;
+    private dynamic stripeSessionInfo;
+
+    // Filtros
+    private string filtroEstado = "";
+    private string filtroTipo = "";
+    private string filtroPeriodo = "24";
+    private int horasAtras = 24;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshData();
+    }
+
+    private async Task RefreshData()
+    {
+        loading = true;
+        try
+        {
+            // Usar el servicio de monitoreo para obtener todas las transacciones
+            transacciones = await TransaccionMonitorService.ObtenerTodasLasTransacciones(horasAtras);
+
+            // Aplicar filtros iniciales
+            AplicarFiltros();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al cargar datos de transacciones");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void HandlePeriodoChange(ChangeEventArgs e)
+    {
+        filtroPeriodo = e.Value?.ToString() ?? "24";
+        ActualizarPeriodo();
+    }
+
+    private void ActualizarPeriodo()
+    {
+        if (int.TryParse(filtroPeriodo, out int horas))
+        {
+            horasAtras = horas;
+        }
+    }
+
+    private void AplicarFiltros()
+    {
+        // Filtrar por estado si hay un filtro seleccionado
+        var query = transacciones.AsQueryable();
+
+        if (!string.IsNullOrEmpty(filtroEstado))
+        {
+            query = query.Where(t => t.Estado == filtroEstado);
+        }
+
+        if (!string.IsNullOrEmpty(filtroTipo))
+        {
+            query = query.Where(t => t.TipoOperacion == filtroTipo);
+        }
+
+        transaccionesFiltradas = query.OrderByDescending(t => t.FechaCreacion).ToList();
+    }
+
+    private void VerDetalles(TransaccionAuditoria transaccion)
+    {
+        selectedTransaccion = transaccion;
+        stripeSessionInfo = null; // Limpiar información previa
+        showDetailsModal = true;
+    }
+
+    private async Task VerificarTansaccion(TransaccionAuditoria transaccion)
+    {
+        try
+        {
+            selectedTransaccion = transaccion;
+            showDetailsModal = true;
+            // Consultar el estado actual en Stripe
+            var session = await StripeService.ObtenerDetallesSesion(transaccion.ReferenciaExterna);
+            if (session != null)
+            {
+                stripeSessionInfo = session;
+                // Actualizar el registro de monitoreo con la información más reciente
+                string nuevoEstado = selectedTransaccion.Estado;
+                string detalleError = null;
+                if (session.PaymentStatus == "paid" &&
+                    (selectedTransaccion.Estado == "RequiereRevisión" || selectedTransaccion.Estado == "Fallida" || selectedTransaccion.Estado == "EnEspera"))
+                {
+                    nuevoEstado = "RequiereRevisión";
+                    detalleError = "Pago confirmado en Stripe pero no procesado en el sistema";
+                }
+                else if (session.PaymentStatus != "paid")
+                {
+                    nuevoEstado = "EnEspera";
+                    detalleError = $"Estado de pago en Stripe: {session.PaymentStatus}";
+                }
+                // Solo actualizar si hay cambios
+                if (nuevoEstado != selectedTransaccion.Estado || detalleError != selectedTransaccion.DetalleError)
+                {
+                    await TransaccionMonitorService.ActualizarEstadoTransaccion(
+                        transaccion.ReferenciaExterna,
+                        nuevoEstado,
+                        detalleError);
+                    // Actualizar la transacción en la vista
+                    selectedTransaccion.Estado = nuevoEstado;
+                    selectedTransaccion.DetalleError = detalleError;
+                    // Actualizar también en la lista principal
+                    var trans = transacciones.FirstOrDefault(t => t.Id == selectedTransaccion.Id);
+                    if (trans != null)
+                    {
+                        trans.Estado = nuevoEstado;
+                        trans.DetalleError = detalleError;
+                    }
+                    // Reaplciar filtros para actualizar la vista
+                    AplicarFiltros();
+                    // Forzar actualización de la UI
+                    StateHasChanged();
+                }
+            }
+            else
+            {
+                // No se encontró la sesión en Stripe
+                await TransaccionMonitorService.ActualizarEstadoTransaccion(
+                    transaccion.ReferenciaExterna,
+                    "Fallida",
+                    "Sesión no encontrada en Stripe");
+                selectedTransaccion.Estado = "Fallida";
+                selectedTransaccion.DetalleError = "Sesión no encontrada en Stripe";
+                // Actualizar también en la lista principal
+                var trans = transacciones.FirstOrDefault(t => t.Id == selectedTransaccion.Id);
+                if (trans != null)
+                {
+                    trans.Estado = "Fallida";
+                    trans.DetalleError = "Sesión no encontrada en Stripe";
+                }
+                // Reaplciar filtros para actualizar la vista
+                AplicarFiltros();
+                // Forzar actualización de la UI
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error al verificar transacción en Stripe: {transaccion.ReferenciaExterna}");
+            // Actualizar el detalle de error
+            selectedTransaccion.DetalleError = $"Error al consultar Stripe: {ex.Message}";
+            // Forzar actualización de la UI
+            StateHasChanged();
+        }
+    }
+
+    private async Task ProcessarManualmente()
+    {
+        if (selectedTransaccion == null)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "No hay transacción seleccionada.");
+            return;
+        }
+
+        try
+        {
+            // Verificar si la transacción ya fue procesada
+            bool yaExiste = await SaldoService.ExisteTransaccion(selectedTransaccion.ReferenciaExterna);
+            if (yaExiste)
+            {
+                await TransaccionMonitorService.ActualizarEstadoTransaccion(
+                    selectedTransaccion.ReferenciaExterna,
+                    "Completada",
+                    "Transacción ya procesada");
+
+                await JSRuntime.InvokeVoidAsync("alert", "Esta transacción ya fue procesada anteriormente.");
+
+                // Actualizar la UI
+                RefrescarTransaccionEnUI("Completada", "Transacción ya procesada");
+                return;
+            }
+
+            // Procesar según tipo de operación
+            bool resultado = false;
+
+            if (selectedTransaccion.TipoOperacion == "RecargaSaldo")
+            {
+                // Procesar recarga de saldo
+                resultado = await SaldoService.AgregarSaldo(
+                    selectedTransaccion.UserId,
+                    selectedTransaccion.Monto,
+                    "Recarga de saldo (procesamiento manual)",
+                    selectedTransaccion.ReferenciaExterna);
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Tipo de operación no soportada para procesamiento manual.");
+                return;
+            }
+
+            if (resultado)
+            {
+                // Actualizar estado en BD
+                await TransaccionMonitorService.ActualizarEstadoTransaccion(
+                    selectedTransaccion.ReferenciaExterna,
+                    "Completada",
+                    "Procesada manualmente");
+
+                await JSRuntime.InvokeVoidAsync("alert", "Transacción procesada correctamente.");
+
+                // Actualizar la UI
+                RefrescarTransaccionEnUI("Completada", "Procesada manualmente");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Error al procesar la transacción manualmente.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error al procesar manualmente la transacción: {selectedTransaccion.ReferenciaExterna}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    // Método auxiliar para actualizar la UI
+    private void RefrescarTransaccionEnUI(string estado, string detalle)
+    {
+        // Actualizar la transacción seleccionada
+        selectedTransaccion.Estado = estado;
+        selectedTransaccion.DetalleError = detalle;
+
+        // Actualizar en la lista principal
+        var trans = transacciones.FirstOrDefault(t => t.Id == selectedTransaccion.Id);
+        if (trans != null)
+        {
+            trans.Estado = estado;
+            trans.DetalleError = detalle;
+        }
+
+        // Reaplciar filtros y actualizar UI
+        AplicarFiltros();
+        StateHasChanged();
+    }
+    private void CloseModal()
+    {
+        showDetailsModal = false;
+        selectedTransaccion = null;
+        stripeSessionInfo = null;
+    }
+
+    private string GetEstadoBadgeClass(string estado)
+    {
+        return estado?.ToLower() switch
+        {
+            "completada" => "bg-green-100 text-green-800",
+            "iniciada" => "bg-blue-100 text-blue-800",
+            "procesandowebhook" => "bg-purple-100 text-purple-800",
+            "enespera" => "bg-yellow-100 text-yellow-800",
+            "requiererevisión" => "bg-orange-100 text-orange-800",
+            "fallida" => "bg-red-100 text-red-800",
+            _ => "bg-gray-100 text-gray-800"
+        };
+    }
+}

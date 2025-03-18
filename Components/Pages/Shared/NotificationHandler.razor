@@ -1,0 +1,28 @@
+﻿@using TelefonicaEmpresaria.Services
+@inject INotificationService NotificationService
+@inject IJSRuntime JSRuntime
+
+@code {
+    protected override void OnInitialized()
+    {
+        NotificationService.OnNotification += HandleNotification;
+    }
+
+    public void Dispose()
+    {
+        NotificationService.OnNotification -= HandleNotification;
+    }
+
+    private async void HandleNotification(string message, string type)
+    {
+        string icon = type switch
+        {
+            "success" => "success",
+            "error" => "error",
+            "warning" => "warning",
+            _ => "info"
+        };
+
+        await JSRuntime.InvokeVoidAsync("alert", message);
+    }
+}

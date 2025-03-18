@@ -1,0 +1,101 @@
+﻿@* Notifications.razor *@
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<div class="fixed top-4 right-4 z-50" id="notification-container">
+    @foreach (var notification in _notifications)
+    {
+        <div class="@GetNotificationClasses(notification.Type) p-4 mb-4 rounded shadow-md transform transition-all duration-300 ease-in-out">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <p class="ml-3">@notification.Message</p>
+                </div>
+                <button @onclick="() => RemoveNotification(notification)" class="hover:text-opacity-75">
+                    <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<NotificationInfo> _notifications = new List<NotificationInfo>();
+    private INotificationService _notificationService;
+
+    [Inject]
+    private INotificationService NotificationService
+    {
+        get => _notificationService;
+        set
+        {
+            if (_notificationService != value)
+            {
+                if (_notificationService != null)
+                {
+                    _notificationService.OnNotification -= HandleNotification;
+                }
+                _notificationService = value;
+                if (_notificationService != null)
+                {
+                    _notificationService.OnNotification += HandleNotification;
+                }
+            }
+        }
+    }
+
+    private class NotificationInfo
+    {
+        public string Id { get; } = Guid.NewGuid().ToString();
+        public string Message { get; set; }
+        public string Type { get; set; }
+        public DateTime CreatedAt { get; } = DateTime.UtcNow;
+    }
+
+    protected override void OnInitialized()
+    {
+        NotificationService.OnNotification += HandleNotification;
+    }
+
+    public void Dispose()
+    {
+        NotificationService.OnNotification -= HandleNotification;
+    }
+
+    private void HandleNotification(string message, string type)
+    {
+        var notification = new NotificationInfo
+            {
+                Message = message,
+                Type = type
+            };
+
+        _notifications.Add(notification);
+        InvokeAsync(StateHasChanged);
+
+        // Auto-eliminar después de 5 segundos
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(5000);
+            RemoveNotification(notification);
+        });
+    }
+
+    private void RemoveNotification(NotificationInfo notification)
+    {
+        _notifications.Remove(notification);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string GetNotificationClasses(string type)
+    {
+        return type?.ToLower() switch
+        {
+            "success" => "bg-green-50 text-green-800 border-l-4 border-green-400",
+            "error" => "bg-red-50 text-red-800 border-l-4 border-red-400",
+            "warning" => "bg-yellow-50 text-yellow-800 border-l-4 border-yellow-400",
+            _ => "bg-blue-50 text-blue-800 border-l-4 border-blue-400"
+        };
+    }
+}

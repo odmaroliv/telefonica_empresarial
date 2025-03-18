@@ -1,6 +1,8 @@
 ﻿namespace TelefonicaEmpresaria.Services
 {
+    using global::TelefonicaEmpresarial.Infrastructure.Resilience;
     using Microsoft.EntityFrameworkCore;
+    using Microsoft.EntityFrameworkCore.Storage;
     using Microsoft.Extensions.DependencyInjection;
     using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data;
     using TelefonicaEmpresaria.Models;
@@ -12,7 +14,7 @@
         {
             Task<decimal> ObtenerSaldoUsuario(string userId);
             Task<bool> VerificarSaldoSuficiente(string userId, decimal montoRequerido);
-            Task<bool> AgregarSaldo(string userId, decimal monto, string concepto, string referenciaExterna);
+            Task<bool> AgregarSaldo(string userId, decimal monto, string concepto, string referenciaExterna, IDbContextTransaction existingTransaction = null);
             Task<bool> DescontarSaldo(string userId, decimal monto, string concepto, int? numeroTelefonicoId = null);
             Task<List<MovimientoSaldo>> ObtenerMovimientosUsuario(string userId, int limite = 20);
             Task<decimal> CalcularCostoLlamada(int duracionSegundos, string pais = "MX");
@@ -68,7 +70,7 @@
                 return saldoActual >= montoRequerido;
             }
 
-            public async Task<bool> AgregarSaldo(string userId, decimal monto, string concepto, string referenciaExterna)
+            public async Task<bool> AgregarSaldo(string userId, decimal monto, string concepto, string referenciaExterna, IDbContextTransaction existingTransaction = null)
             {
                 if (monto <= 0)
                 {
@@ -76,10 +78,16 @@
                     return false;
                 }
 
-                using var transaction = await _context.Database.BeginTransactionAsync();
+                // Si no hay una transacción existente, crear una nueva
+                IDbContextTransaction localTransaction = existingTransaction;
+                bool ownsTransaction = localTransaction == null;
 
                 try
                 {
+                    if (ownsTransaction)
+                    {
+                        localTransaction = await _context.Database.BeginTransactionAsync();
+                    }
                     // Obtener o crear saldo
                     var saldoCuenta = await _context.SaldosCuenta
                         .FirstOrDefaultAsync(s => s.UserId == userId);
@@ -115,14 +123,21 @@
                     _context.MovimientosSaldo.Add(movimiento);
                     await _context.SaveChangesAsync();
 
-                    await transaction.CommitAsync();
-
+                    if (ownsTransaction)
+                    {
+                        await localTransaction.CommitAsync();
+                    }
                     _logger.LogInformation($"Saldo agregado: {monto} para usuario {userId}, nuevo saldo: {saldoCuenta.Saldo}");
+
                     return true;
+
                 }
                 catch (Exception ex)
                 {
-                    await transaction.RollbackAsync();
+                    if (ownsTransaction && localTransaction != null)
+                    {
+                        await localTransaction.RollbackAsync();
+                    }
                     _logger.LogError(ex, $"Error al agregar saldo ({monto}) para usuario {userId}");
                     throw;
                 }
@@ -270,14 +285,39 @@
                 }
             }
 
-            // Añadir un método para verificar si una transacción ya existe
+
             public async Task<bool> ExisteTransaccion(string referenciaExterna)
             {
                 if (string.IsNullOrEmpty(referenciaExterna))
                     return false;
 
-                return await _context.MovimientosSaldo
-                    .AnyAsync(m => m.ReferenciaExterna == referenciaExterna);
+                try
+                {
+
+
+                    var policyContext = new Polly.Context
+                    {
+                        ["logger"] = _logger
+                    };
+
+
+                    return await PoliciasReintentos.ObtenerPoliticaDB().ExecuteAsync(
+                        async (ctx) =>
+                        {
+
+                            return await _context.MovimientosSaldo
+                                .AsNoTracking()
+                                .AnyAsync(m => m.ReferenciaExterna == referenciaExterna);
+                        },
+                        policyContext
+                            );
+
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Error al verificar si existe la transacción con referencia {referenciaExterna}");
+                    return false;
+                }
             }
         }
     }

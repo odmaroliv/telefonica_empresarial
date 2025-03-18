@@ -26,6 +26,19 @@
                 <label asp-for="Input.ConfirmPassword">Confirmar Contraseña</label>
                 <span asp-validation-for="Input.ConfirmPassword" class="text-danger"></span>
             </div>
+            <!-- Casilla de verificación de Aceptar Términos -->
+            <div class="form-check mb-3">
+                <input asp-for="Input.AcceptTerms" class="form-check-input" />
+                <label class="form-check-label" for="Input_AcceptTerms">
+                    Acepto los
+                    <a href ="/terminos" target="_blank">Términos y condiciones</a>,
+                    <a href="/privacidad" target="_blank">Política de privacidad</a>,
+                    <a href ="/cookies" target="_blank">Política de cookies</a>
+                    
+                    <a href= "/regulatorio" target="_blank">Cumplimiento regulatorio</a>.
+                </label>
+                <span asp-validation-for="Input.AcceptTerms" class="text-danger"></span>
+            </div>
             <button id="registerSubmit" type="submit" class="w-100 btn btn-lg btn-primary">Registrarse</button>
         </form>
     </div>

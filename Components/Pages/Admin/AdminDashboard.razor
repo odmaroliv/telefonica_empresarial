@@ -1,0 +1,296 @@
+﻿@page "/admin"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data
+@using TelefonicaEmpresaria.Models
+@attribute [Authorize(Roles = "Admin")]
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+
+<div class="container mx-auto px-4 py-6">
+    <div class="mb-6">
+        <h2 class="text-3xl font-bold text-gray-800">Dashboard de Administración</h2>
+    </div>
+
+    <div class="grid md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-blue-600 text-white rounded-lg shadow-md overflow-hidden">
+            <div class="p-5">
+                <h5 class="text-lg font-semibold mb-2">Usuarios</h5>
+                <p class="text-4xl font-bold">@userCount</p>
+            </div>
+            <div class="bg-blue-700 bg-opacity-50 p-3 text-right">
+                <a href="/admin/usuarios" class="text-sm text-white hover:underline">Ver Detalles</a>
+            </div>
+        </div>
+
+        <div class="bg-green-600 text-white rounded-lg shadow-md overflow-hidden">
+            <div class="p-5">
+                <h5 class="text-lg font-semibold mb-2">Números Activos</h5>
+                <p class="text-4xl font-bold">@numberCount</p>
+            </div>
+            <div class="bg-green-700 bg-opacity-50 p-3 text-right">
+                <a href="/admin/numeros" class="text-sm text-white hover:underline">Ver Detalles</a>
+            </div>
+        </div>
+
+        <div class="bg-blue-500 text-white rounded-lg shadow-md overflow-hidden">
+            <div class="p-5">
+                <h5 class="text-lg font-semibold mb-2">Llamadas (24h)</h5>
+                <p class="text-4xl font-bold">@callsLast24h</p>
+            </div>
+            <div class="bg-blue-600 bg-opacity-50 p-3 text-right">
+                <a href="/admin/llamadas" class="text-sm text-white hover:underline">Ver Detalles</a>
+            </div>
+        </div>
+
+        <div class="bg-yellow-500 text-white rounded-lg shadow-md overflow-hidden">
+            <div class="p-5">
+                <h5 class="text-lg font-semibold mb-2">SMS (24h)</h5>
+                <p class="text-4xl font-bold">@smsLast24h</p>
+            </div>
+            <div class="bg-yellow-600 bg-opacity-50 p-3 text-right">
+                <a href="/admin/sms" class="text-sm text-white hover:underline">Ver Detalles</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-8">
+        <div class="bg-white rounded-lg shadow-md">
+            <div class="p-5 border-b">
+                <h5 class="text-xl font-semibold text-gray-800">Transacciones Recientes</h5>
+            </div>
+            <div class="p-5">
+                @if (recentTransactions.Any())
+                {
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="border-b">
+                                    <th class="py-2 text-left text-sm text-gray-600">Usuario</th>
+                                    <th class="py-2 text-left text-sm text-gray-600">Monto</th>
+                                    <th class="py-2 text-left text-sm text-gray-600">Fecha</th>
+                                    <th class="py-2 text-left text-sm text-gray-600">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var transaction in recentTransactions)
+                                {
+                                    <tr class="border-b last:border-b-0">
+                                        <td class="py-2">@transaction.Usuario?.Email</td>
+                                        <td class="py-2">$@transaction.Monto.ToString("F2")</td>
+                                        <td class="py-2">@transaction.Fecha.ToString("dd/MM/yyyy")</td>
+                                        <td class="py-2">
+                                            <span class="@GetStatusBadgeClass(transaction.Status) px-2 py-1 rounded-full text-xs">
+                                                @transaction.Status
+                                            </span>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+                        <p class="text-blue-700">No hay transacciones recientes</p>
+                    </div>
+                }
+            </div>
+            <div class="p-4 border-t text-right">
+                <a href="/admin/transacciones" class="text-blue-600 hover:underline">Ver todas</a>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md">
+            <div class="p-5 border-b">
+                <h5 class="text-xl font-semibold text-gray-800">Llamadas Activas</h5>
+            </div>
+            <div class="p-5">
+                @if (activeCalls.Any())
+                {
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="border-b">
+                                    <th class="py-2 text-left text-sm text-gray-600">Usuario</th>
+                                    <th class="py-2 text-left text-sm text-gray-600">Número</th>
+                                    <th class="py-2 text-left text-sm text-gray-600">Destino</th>
+                                    <th class="py-2 text-left text-sm text-gray-600">Duración</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var call in activeCalls)
+                                {
+                                    <tr class="border-b last:border-b-0">
+                                        <td class="py-2">@call.Usuario?.Email</td>
+                                        <td class="py-2">@call.NumeroTelefonico?.Numero</td>
+                                        <td class="py-2">@call.NumeroDestino</td>
+                                        <td class="py-2">@(DateTime.UtcNow - call.FechaInicio)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+                        <p class="text-blue-700">No hay llamadas activas en este momento</p>
+                    </div>
+                }
+            </div>
+            <div class="p-4 border-t text-right">
+                <a href="/admin/llamadas" class="text-blue-600 hover:underline">Ver todas</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+        <div class="bg-white rounded-lg shadow-md">
+            <div class="p-5 border-b">
+                <h5 class="text-xl font-semibold text-gray-800">Acciones Rápidas</h5>
+            </div>
+            <div class="p-5 space-y-4">
+                <button @onclick='() => NavigationManager.NavigateTo("/admin/transacciones-monitor")'
+                        class="w-full flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg"
+                         class="h-5 w-5 mr-2"
+                         fill="none"
+                         viewBox="0 0 24 24"
+                         stroke="currentColor"
+                         stroke-width="1.5">
+                        <path stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25H4.5a2.25 2.25 0 01-2.25-2.25V6.75
+           m19.5 0A2.25 2.25 0 0019.5 4.5H4.5A2.25 2.25 0 002.25 6.75m19.5 0v2.25
+           m-19.5-2.25v2.25m0 0h19.5m-9.75 4.5h5.25" />
+                    </svg>
+
+                    Gestionar Transacciones
+                </button>
+                <button @onclick='() => NavigationManager.NavigateTo("/admin/usuarios")'
+                        class="w-full flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
+                    </svg>
+                    Gestionar Usuarios
+                </button>
+                <button @onclick='() => NavigationManager.NavigateTo("/admin/numeros")'
+                        class="w-full flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                    </svg>
+                    Gestionar Números
+                </button>
+                <button @onclick='() => NavigationManager.NavigateTo("/admin/configuracion")'
+                        class="w-full flex items-center justify-center px-4 py-2 bg-blue-400 text-white rounded-md hover:bg-blue-500 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+                    </svg>
+                    Configuración del Sistema
+                </button>
+                <button @onclick='() => NavigationManager.NavigateTo("/admin/system-health")'
+                        class="w-full flex items-center justify-center px-4 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd" />
+                    </svg>
+                    Estado del Sistema
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md">
+            <div class="p-5 border-b">
+                <h5 class="text-xl font-semibold text-gray-800">Eventos Recientes</h5>
+            </div>
+            <div class="p-5">
+                @if (recentEvents.Any())
+                {
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="border-b">
+                                    <th class="py-2 text-left text-sm text-gray-600">Evento</th>
+                                    <th class="py-2 text-left text-sm text-gray-600">Detalles</th>
+                                    <th class="py-2 text-left text-sm text-gray-600">Fecha</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var evt in recentEvents)
+                                {
+                                    <tr class="border-b last:border-b-0">
+                                        <td class="py-2">@evt.EventoId</td>
+                                        <td class="py-2">@evt.Detalles</td>
+                                        <td class="py-2">@(evt.FechaCompletado?.ToString("dd/MM/yyyy HH:mm") ?? "N/A")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+                        <p class="text-blue-700">No hay eventos recientes</p>
+                    </div>
+                }
+            </div>
+            <div class="p-4 border-t text-right">
+                <a href="/admin/webhooks" class="text-blue-600 hover:underline">Ver todos</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int userCount;
+    private int numberCount;
+    private int callsLast24h;
+    private int smsLast24h;
+    private List<Transaccion> recentTransactions = new();
+    private List<LlamadaSaliente> activeCalls = new();
+    private List<EventoWebhook> recentEvents = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Use DateTime.UtcNow instead of DateTime.Now
+        var yesterday = DateTime.UtcNow.AddDays(-1);
+
+        userCount = await DbContext.Users.CountAsync();
+        numberCount = await DbContext.NumerosTelefonicos.Where(n => n.Activo == true).CountAsync();
+
+        // Ensure you're using UTC comparisons
+        callsLast24h = await DbContext.LogsLlamadas.Where(l => l.FechaHora >= yesterday).CountAsync();
+        smsLast24h = await DbContext.LogsSMS.Where(s => s.FechaHora >= yesterday).CountAsync();
+
+        recentTransactions = await DbContext.Transacciones
+            .Include(t => t.Usuario)
+            .OrderByDescending(t => t.Fecha)
+            .Take(5)
+            .ToListAsync();
+
+        activeCalls = await DbContext.LlamadasSalientes
+            .Where(l => l.Estado == "en-curso")
+            .Include(l => l.Usuario)
+            .Include(l => l.NumeroTelefonico)
+            .ToListAsync();
+
+        recentEvents = await DbContext.EventosWebhook
+            .OrderByDescending(e => e.FechaCompletado)
+            .Take(5)
+            .ToListAsync();
+    }
+
+    private string GetStatusBadgeClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "completada" => "bg-green-100 text-green-800",
+            "pendiente" => "bg-yellow-100 text-yellow-800",
+            "fallida" => "bg-red-100 text-red-800",
+            "reembolsada" => "bg-blue-100 text-blue-800",
+            _ => "bg-gray-100 text-gray-800"
+        };
+    }
+}

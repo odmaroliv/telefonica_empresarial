@@ -1,0 +1,284 @@
+﻿@page "/admin/logs"
+@using Microsoft.AspNetCore.Authorization
+@using TelefonicaEmpresaria.Models
+@using TelefonicaEmpresarial.Services
+@attribute [Authorize(Roles = "Admin")]
+@inject IAdminLogService AdminLogService
+@inject IJSRuntime JSRuntime
+
+<div class="bg-white rounded-lg shadow-md">
+    <div class="p-6 border-b flex justify-between items-center">
+        <h4 class="text-2xl font-semibold text-gray-800">Registro de Acciones Administrativas</h4>
+        <div class="flex space-x-4">
+            <div class="relative flex-grow">
+                <input type="text"
+                       placeholder="Buscar..."
+                       class="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       @bind="searchTerm"
+                       @bind:event="oninput"
+                       @onkeyup="HandleSearch" />
+                <button class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                        @onclick="ResetFilters">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+            <input type="date"
+                   class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                   @bind="startDate"
+                   @bind:format="yyyy-MM-dd"
+                   @bind:event="onchange" />
+            <input type="date"
+                   class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                   @bind="endDate"
+                   @bind:format="yyyy-MM-dd"
+                   @bind:event="onchange" />
+        </div>
+    </div>
+
+    <div class="p-6">
+        @if (loading)
+        {
+            <div class="flex justify-center my-12">
+                <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+        }
+        else if (logs == null || !logs.Any())
+        {
+            <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+                <p class="text-blue-700">No se encontraron registros que coincidan con los criterios de búsqueda.</p>
+            </div>
+        }
+        else
+        {
+            <div class="overflow-x-auto">
+                <table class="w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha y Hora</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Administrador</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acción</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo Objetivo</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID Objetivo</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Detalles</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        @foreach (var log in logs)
+                        {
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @log.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    @log.Admin?.Email
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="@GetActionBadgeClass(log.Action) px-2 py-1 rounded-full text-xs">
+                                        @log.Action
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @log.TargetType
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @log.TargetId
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @if (!string.IsNullOrEmpty(log.Details))
+                                    {
+                                        <button @onclick="() => ShowDetails(log)"
+                                                class="text-blue-600 hover:text-blue-800 hover:underline">
+                                            Ver Detalles
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-gray-400">-</span>
+                                    }
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @log.IpAddress
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex justify-between items-center mt-6">
+                <button @onclick="ExportToCsv"
+                        class="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-9.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                    Exportar a CSV
+                </button>
+                <div class="text-sm text-gray-600">
+                    Mostrando @logs.Count registros
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showDetailsModal)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto outline-none focus:outline-none">
+        <div class="relative w-full max-w-lg mx-auto my-6">
+            <div class="relative flex flex-col w-full bg-white border-0 rounded-lg shadow-lg outline-none focus:outline-none">
+                <div class="flex items-start justify-between p-5 border-b border-solid rounded-t border-blueGray-200">
+                    <h5 class="text-xl font-semibold text-gray-800">Detalles de la Acción</h5>
+                    <button @onclick="CloseModal"
+                            class="float-right text-3xl leading-none font-semibold outline-none focus:outline-none text-gray-500 hover:text-gray-700">
+                        ×
+                    </button>
+                </div>
+                <div class="relative p-6 flex-auto">
+                    @if (selectedLog != null)
+                    {
+                        <div class="space-y-4">
+                            <div>
+                                <strong class="text-gray-700">Administrador:</strong>
+                                <p class="text-gray-600">@selectedLog.Admin?.Email</p>
+                            </div>
+                            <div>
+                                <strong class="text-gray-700">Acción:</strong>
+                                <p class="text-gray-600">@selectedLog.Action</p>
+                            </div>
+                            <div>
+                                <strong class="text-gray-700">Tipo de Objetivo:</strong>
+                                <p class="text-gray-600">@selectedLog.TargetType</p>
+                            </div>
+                            <div>
+                                <strong class="text-gray-700">ID de Objetivo:</strong>
+                                <p class="text-gray-600">@selectedLog.TargetId</p>
+                            </div>
+                            <div>
+                                <strong class="text-gray-700">Fecha y Hora:</strong>
+                                <p class="text-gray-600">@selectedLog.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</p>
+                            </div>
+                            <div>
+                                <strong class="text-gray-700">Dirección IP:</strong>
+                                <p class="text-gray-600">@selectedLog.IpAddress</p>
+                            </div>
+                            @if (!string.IsNullOrEmpty(selectedLog.Details))
+                            {
+                                <div>
+                                    <strong class="text-gray-700">Detalles:</strong>
+                                    <pre class="bg-gray-100 p-4 rounded-md text-sm text-gray-800 overflow-x-auto">@selectedLog.Details</pre>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="flex items-center justify-end p-6 border-t border-solid rounded-b border-blueGray-200">
+                    <button @onclick="CloseModal"
+                            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="fixed inset-0 z-40 bg-black opacity-25"></div>
+}
+
+@code {
+    private List<AdminLog> logs;
+    private bool loading = true;
+    private string searchTerm = "";
+    private DateTime? startDate;
+    private DateTime? endDate;
+
+    // Modal
+    private bool showDetailsModal = false;
+    private AdminLog selectedLog;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLogs();
+    }
+
+    private async Task LoadLogs()
+    {
+        loading = true;
+
+        logs = await AdminLogService.SearchLogsAsync(searchTerm, startDate, endDate, 500);
+
+        loading = false;
+    }
+
+    private async Task ApplyFilters()
+    {
+        await LoadLogs();
+    }
+
+    private void HandleSearch(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            ApplyFilters();
+        }
+    }
+
+    private async Task ResetFilters()
+    {
+        searchTerm = "";
+        startDate = null;
+        endDate = null;
+        await LoadLogs();
+    }
+
+    private void ShowDetails(AdminLog log)
+    {
+        selectedLog = log;
+        showDetailsModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showDetailsModal = false;
+    }
+
+    private string GetActionBadgeClass(string action)
+    {
+        return action?.ToLower() switch
+        {
+            "create" => "bg-green-100 text-green-800",
+            "update" => "bg-blue-100 text-blue-800",
+            "delete" => "bg-red-100 text-red-800",
+            "enable" => "bg-blue-100 text-blue-800",
+            "disable" => "bg-yellow-100 text-yellow-800",
+            _ => "bg-gray-100 text-gray-800"
+        };
+    }
+
+    private async Task ExportToCsv()
+    {
+        if (logs == null || !logs.Any())
+            return;
+
+        // Crear contenido CSV
+        var csv = "Fecha,Administrador,Acción,Tipo Objetivo,ID Objetivo,Detalles,IP\n";
+
+        foreach (var log in logs)
+        {
+            // Escapar comillas en campos
+            var details = log.Details?.Replace("\"", "\"\"") ?? "";
+
+            csv += $"{log.Timestamp:yyyy-MM-dd HH:mm:ss},";
+            csv += $"\"{log.Admin?.Email}\",";
+            csv += $"\"{log.Action}\",";
+            csv += $"\"{log.TargetType}\",";
+            csv += $"\"{log.TargetId}\",";
+            csv += $"\"{details}\",";
+            csv += $"\"{log.IpAddress}\"\n";
+        }
+
+        // Generar archivo para descarga
+        await JSRuntime.InvokeVoidAsync("downloadCSV", "logs_administrativos.csv", csv);
+    }
+}

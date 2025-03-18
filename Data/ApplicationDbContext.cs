@@ -25,7 +25,8 @@
             public DbSet<RequisitosRegulatorios> RequisitosRegulatorios { get; set; }
             public DbSet<DocumentacionUsuario> DocumentacionUsuarios { get; set; }
             public DbSet<LlamadaSaliente> LlamadasSalientes { get; set; }
-
+            public DbSet<AdminLog> AdminLogs { get; set; }
+            public DbSet<TransaccionAuditoria> TransaccionesAuditoria { get; set; }
 
 
             protected override void OnModelCreating(ModelBuilder builder)

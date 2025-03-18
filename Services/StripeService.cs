@@ -5,12 +5,15 @@ using Stripe;
 using Stripe.Checkout;
 using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data;
 using TelefonicaEmpresaria.Models;
+using TelefonicaEmpresaria.Services.BackgroundJobs;
 using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services;
+using TelefonicaEmpresarial.Infrastructure.Resilience;
 
 namespace TelefonicaEmpresarial.Services
 {
     public interface IStripeService
     {
+
         Task<string> CrearClienteStripe(ApplicationUser usuario);
         Task<StripeCheckoutSession> CrearSesionCompra(string customerId, string numeroTelefono, decimal costoMensual, decimal? costoSMS = null);
         Task<bool> VerificarPagoCompletado(string sessionId);
@@ -40,18 +43,21 @@ namespace TelefonicaEmpresarial.Services
         private readonly string _webhookSecret;
         private readonly AsyncRetryPolicy _retryPolicy;
         private readonly IServiceProvider _serviceProvider;
+        private readonly ITransaccionMonitorService _transaccionMonitorService;
 
         public StripeService(
             IConfiguration configuration,
             ApplicationDbContext context,
             ILogger<StripeService> logger,
-            IServiceProvider serviceProvider)
+            IServiceProvider serviceProvider,
+            ITransaccionMonitorService transaccionMonitorService)
         {
             _configuration = configuration;
             _context = context;
             _logger = logger;
             _apiKey = _configuration["Stripe:SecretKey"] ?? throw new ArgumentNullException("Stripe:SecretKey");
             _webhookSecret = _configuration["Stripe:WebhookSecret"] ?? throw new ArgumentNullException("Stripe:WebhookSecret");
+            _transaccionMonitorService = transaccionMonitorService;
 
             // Configurar la API de Stripe
             StripeConfiguration.ApiKey = _apiKey;
@@ -654,8 +660,7 @@ namespace TelefonicaEmpresarial.Services
 
                 // Intentar encontrar el evento existente con bloqueo
                 var evento = await _context.EventosWebhook
-                    .FromSqlRaw("SELECT * FROM EventosWebhook WITH (UPDLOCK) WHERE EventoId = {0}", eventId)
-                    .FirstOrDefaultAsync();
+       .FirstOrDefaultAsync(e => e.EventoId == eventId);
 
                 if (evento == null)
                 {
@@ -699,8 +704,7 @@ namespace TelefonicaEmpresarial.Services
 
                 // Intentar encontrar el evento existente con bloqueo
                 var evento = await _context.EventosWebhook
-                    .FromSqlRaw("SELECT * FROM EventosWebhook WITH (UPDLOCK) WHERE EventoId = {0}", eventId)
-                    .FirstOrDefaultAsync();
+       .FirstOrDefaultAsync(e => e.EventoId == eventId);
 
                 if (evento != null)
                 {
@@ -761,13 +765,27 @@ namespace TelefonicaEmpresarial.Services
         {
             try
             {
-                // PRIMERO: Verificar si esta sesión ya fue procesada
+                _logger.LogInformation($"Webhook: Procesando recarga de saldo para sesión {sessionId}");
+
+                // Actualizar el registro de monitoreo
+                await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                    sessionId,
+                    "ProcesandoWebhook");
+
+                // PRIMERO: Verificar si esta sesión ya fue procesada (idempotencia)
                 var saldoService = _serviceProvider.GetRequiredService<ISaldoService>();
                 bool transaccionExistente = await saldoService.ExisteTransaccion(sessionId);
 
                 if (transaccionExistente)
                 {
                     _logger.LogInformation($"Webhook: La sesión {sessionId} ya fue procesada anteriormente");
+
+                    // Actualizar monitoreo
+                    await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                        sessionId,
+                        "Completada",
+                        "Ya procesada anteriormente");
+
                     return; // Salir sin procesar nuevamente
                 }
 
@@ -775,9 +793,29 @@ namespace TelefonicaEmpresarial.Services
                 var sessionService = new SessionService();
                 var session = await sessionService.GetAsync(sessionId);
 
-                if (session == null || session.PaymentStatus != "paid")
+                if (session == null)
                 {
-                    _logger.LogWarning($"Sesión {sessionId} no está pagada o no existe");
+                    _logger.LogWarning($"Webhook: Sesión {sessionId} no encontrada");
+
+                    // Actualizar monitoreo
+                    await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                        sessionId,
+                        "Fallida",
+                        "Sesión no encontrada en Stripe");
+
+                    return;
+                }
+
+                if (session.PaymentStatus != "paid")
+                {
+                    _logger.LogWarning($"Webhook: Sesión {sessionId} no está pagada. Estado: {session.PaymentStatus}");
+
+                    // Actualizar monitoreo
+                    await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                        sessionId,
+                        "EnEspera",
+                        $"Estado de pago: {session.PaymentStatus}");
+
                     return;
                 }
 
@@ -787,7 +825,14 @@ namespace TelefonicaEmpresarial.Services
 
                 if (usuario == null)
                 {
-                    _logger.LogWarning($"No se encontró usuario para el cliente de Stripe {customerId}");
+                    _logger.LogWarning($"Webhook: No se encontró usuario para el cliente de Stripe {customerId}");
+
+                    // Actualizar monitoreo
+                    await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                        sessionId,
+                        "Fallida",
+                        $"Usuario no encontrado para customerId: {customerId}");
+
                     return;
                 }
 
@@ -798,39 +843,85 @@ namespace TelefonicaEmpresarial.Services
                 using var dbTransaction = await _context.Database.BeginTransactionAsync();
                 try
                 {
-                    // Usar un bloqueo optimista en la tabla de saldo para evitar condiciones de carrera
+                    // Verificar nuevamente dentro de la transacción
+                    var transaccionProcesada = await _context.MovimientosSaldo
+                        .AnyAsync(m => m.ReferenciaExterna == sessionId);
+
+                    if (transaccionProcesada)
+                    {
+                        _logger.LogInformation($"Webhook: La transacción {sessionId} ya fue procesada (verificación con bloqueo)");
+                        await dbTransaction.RollbackAsync();
+
+                        // Actualizar monitoreo
+                        await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                            sessionId,
+                            "Completada",
+                            "Ya procesada (verificación con bloqueo)");
+
+                        return;
+                    }
+
+                    // Procesar la recarga
                     var resultado = await saldoService.AgregarSaldo(
-                        usuario.Id,
-                        monto,
-                        "Recarga de saldo (webhook)",
-                        sessionId
-                    );
+       usuario.Id,
+       monto,
+       "Recarga de saldo (webhook)",
+       sessionId,
+       dbTransaction
+   );
 
                     if (resultado)
                     {
                         await dbTransaction.CommitAsync();
-                        _logger.LogInformation($"Recarga de ${monto} procesada correctamente para usuario {usuario.Id} mediante webhook");
+                        _logger.LogInformation($"Webhook: Recarga de ${monto} procesada correctamente para usuario {usuario.Id}");
+
+                        // Actualizar monitoreo
+                        await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                            sessionId,
+                            "Completada");
                     }
                     else
                     {
                         await dbTransaction.RollbackAsync();
-                        _logger.LogError($"Error al procesar recarga mediante webhook para sesión {sessionId}");
+                        _logger.LogError($"Webhook: Error al procesar recarga para sesión {sessionId}");
+
+                        // Actualizar monitoreo
+                        await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                            sessionId,
+                            "Fallida",
+                            "Error al agregar saldo");
                     }
                 }
                 catch (Exception ex)
                 {
                     await dbTransaction.RollbackAsync();
-                    _logger.LogError(ex, $"Error en transacción de BD al procesar recarga para sesión {sessionId}");
+                    _logger.LogError(ex, $"Webhook: Error en transacción de BD al procesar recarga para sesión {sessionId}");
+
+                    // Actualizar monitoreo
+                    await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                        sessionId,
+                        "Fallida",
+                        $"Error en transacción: {ex.Message}");
+
                     throw;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error al procesar recarga de saldo para sesión {sessionId}");
+                _logger.LogError(ex, $"Webhook: Error general al procesar recarga de saldo para sesión {sessionId}");
+
+                // Actualizar monitoreo incluso en caso de error general
+                try
+                {
+                    await _transaccionMonitorService.ActualizarEstadoTransaccion(
+                        sessionId,
+                        "Fallida",
+                        $"Error general: {ex.Message}");
+                }
+                catch { /* Ignorar errores en el monitoreo */ }
             }
         }
-        // Mejora del método ManejarSesionCompletada en StripeService.cs
-        // En la clase StripeService.cs, actualiza el método ManejarSesionCompletada:
+
 
         private async Task ManejarSesionCompletada(Session sesion)
         {
@@ -1130,6 +1221,20 @@ namespace TelefonicaEmpresarial.Services
 
                     _logger.LogInformation($"Sesión de recarga creada. ID: {session.Id}");
 
+                    // Encontrar el usuario correspondiente a este customerId para el monitoreo
+                    var usuario = await _context.Users.FirstOrDefaultAsync(u => u.StripeCustomerId == customerId);
+                    if (usuario != null)
+                    {
+                        // Registrar la transacción en el sistema de monitoreo
+                        await _transaccionMonitorService.RegistrarInicioTransaccion(
+                            "RecargaSaldo",
+                            session.Id,
+                            usuario.Id,
+                            monto,
+                            System.Text.Json.JsonSerializer.Serialize(new { session.Id, customerId, monto })
+                        );
+                    }
+
                     return new StripeCheckoutSession
                     {
                         SessionId = session.Id,
@@ -1151,28 +1256,36 @@ namespace TelefonicaEmpresarial.Services
 
         public async Task<Stripe.Checkout.Session> ObtenerDetallesSesion(string sessionId)
         {
-            return await _retryPolicy.ExecuteAsync(async () =>
+            var policyContext = new Polly.Context
             {
-                try
-                {
-                    _logger.LogInformation($"Obteniendo detalles de sesión: {sessionId}");
+                ["logger"] = _logger
+            };
 
-                    var sessionService = new SessionService();
-                    var session = await sessionService.GetAsync(sessionId);
+            return await PoliciasReintentos.ObtenerPoliticaAPI().ExecuteAsync(
+        async (ctx) =>
+        {
+            try
+            {
+                _logger.LogInformation($"Obteniendo detalles de sesión: {sessionId}");
 
-                    return session;
-                }
-                catch (StripeException ex)
-                {
-                    _logger.LogError($"Error de Stripe al obtener detalles de sesión: {ex.Message}");
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError($"Error general al obtener detalles de sesión: {ex.Message}");
-                    throw;
-                }
-            });
+                var sessionService = new SessionService();
+                var session = await sessionService.GetAsync(sessionId);
+
+                return session;
+            }
+            catch (StripeException ex)
+            {
+                _logger.LogError($"Error de Stripe al obtener detalles de sesión: {ex.Message}");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error general al obtener detalles de sesión: {ex.Message}");
+                throw;
+            }
+        },
+        policyContext
+    );
         }
     }
 

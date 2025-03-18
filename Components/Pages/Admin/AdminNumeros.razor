@@ -1,0 +1,824 @@
+﻿@page "/admin/numeros"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data
+@using TelefonicaEmpresaria.Models
+@attribute [Authorize(Roles = "Admin")]
+@inject ApplicationDbContext DbContext
+@inject INotificationService NotificationService
+
+<div class="bg-white rounded-lg shadow-md">
+    <div class="p-6 border-b flex justify-between items-center">
+        <h4 class="text-2xl font-semibold text-gray-800">Gestión de Números Telefónicos</h4>
+        <div class="flex space-x-4">
+            <div class="relative flex-grow">
+                <input 
+                    type="text" 
+                    placeholder="Buscar..." 
+                    class="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    @bind="searchTerm" 
+                    @bind:event="oninput" 
+                    @onkeyup="HandleSearch" 
+                />
+                <button 
+                    class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700" 
+                    @onclick="ResetFilters"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+            <select 
+                class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                @bind="filterStatus"
+            >
+                <option value="">Todos los estados</option>
+                <option value="true">Activos</option>
+                <option value="false">Inactivos</option>
+            </select>
+        </div>
+    </div>
+    
+    <div class="p-6">
+        @if (loading)
+        {
+            <div class="flex justify-center my-12">
+                <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+        }
+        else if (filteredNumeros.Count == 0)
+        {
+            <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+                <p class="text-blue-700">No se encontraron números telefónicos que coincidan con los criterios de búsqueda.</p>
+            </div>
+        }
+        else
+        {
+            <div class="overflow-x-auto">
+                <table class="w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <button 
+                                    class="flex items-center hover:text-gray-700" 
+                                    @onclick="() => SortBy(nameof(NumeroTelefonico.Numero))"
+                                >
+                                    Número 
+                                    @if (sortField == nameof(NumeroTelefonico.Numero))
+                                    {
+                                        <span class="ml-2">@(sortAscending ? "↑" : "↓")</span>
+                                    }
+                                </button>
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Número de Redirección
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Usuario
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <button 
+                                    class="flex items-center hover:text-gray-700" 
+                                    @onclick="() => SortBy(nameof(NumeroTelefonico.Activo))"
+                                >
+                                    Estado 
+                                    @if (sortField == nameof(NumeroTelefonico.Activo))
+                                    {
+                                        <span class="ml-2">@(sortAscending ? "↑" : "↓")</span>
+                                    }
+                                </button>
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <button 
+                                    class="flex items-center hover:text-gray-700" 
+                                    @onclick="() => SortBy(nameof(NumeroTelefonico.FechaCompra))"
+                                >
+                                    Fecha de Compra 
+                                    @if (sortField == nameof(NumeroTelefonico.FechaCompra))
+                                    {
+                                        <span class="ml-2">@(sortAscending ? "↑" : "↓")</span>
+                                    }
+                                </button>
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <button 
+                                    class="flex items-center hover:text-gray-700" 
+                                    @onclick="() => SortBy(nameof(NumeroTelefonico.FechaExpiracion))"
+                                >
+                                    Fecha de Expiración 
+                                    @if (sortField == nameof(NumeroTelefonico.FechaExpiracion))
+                                    {
+                                        <span class="ml-2">@(sortAscending ? "↑" : "↓")</span>
+                                    }
+                                </button>
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                SMS
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Costo Mensual
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Acciones
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        @foreach (var numero in filteredNumeros.Skip((currentPage - 1) * pageSize).Take(pageSize))
+                        {
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    @numero.Numero
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @numero.NumeroRedireccion
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @(numero.Usuario?.Email ?? "Sin asignar")
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="@GetStatusBadgeClass(numero.Activo) px-2 py-1 rounded-full text-xs">
+                                        @(numero.Activo ? "Activo" : "Inactivo")
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @numero.FechaCompra.ToString("dd/MM/yyyy")
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @numero.FechaExpiracion.ToString("dd/MM/yyyy")
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="@(numero.SMSHabilitado ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800") px-2 py-1 rounded-full text-xs">
+                                        @(numero.SMSHabilitado ? "Sí" : "No")
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    $@numero.CostoMensual.ToString("F2")
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                    <div class="flex space-x-2">
+                                        <button 
+                                            @onclick="() => EditNumber(numero)" 
+                                            class="text-blue-600 hover:text-blue-900"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                                            </svg>
+                                        </button>
+                                        <button 
+                                            @onclick="() => ViewNumberDetails(numero)" 
+                                            class="text-green-600 hover:text-green-900"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                                                <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
+                                            </svg>
+                                        </button>
+                                        <button 
+                                            @onclick="() => ToggleNumberStatus(numero)" 
+                                            class="@(numero.Activo ? "text-yellow-600 hover:text-yellow-900" : "text-green-600 hover:text-green-900")"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                @if (numero.Activo)
+                                                {
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                                                }
+                                                else
+                                                {
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd" />
+                                                }
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex justify-between items-center mt-6">
+                <div class="text-sm text-gray-600">
+                    Mostrando @(((currentPage - 1) * pageSize) + 1) a @Math.Min(currentPage * pageSize, filteredNumeros.Count) de @filteredNumeros.Count números
+                </div>
+                <div class="flex space-x-2">
+                    <button 
+                        @onclick="PreviousPage" 
+                        disabled="@(currentPage == 1)"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        Anterior
+                    </button>
+                    
+                    @for (int i = startPage; i <= endPage; i++)
+                    {
+                        var pageNumber = i;
+                        <button 
+                            @onclick="() => GoToPage(pageNumber)"
+                            class="px-4 py-2 text-sm font-medium @(pageNumber == currentPage ? "bg-blue-600 text-white" : "text-gray-700 bg-white border border-gray-300") rounded-md hover:bg-gray-50"
+                        >
+                            @pageNumber
+                        </button>
+                    }
+
+                    <button @onclick="NextPage"
+                            disabled="@(currentPage == totalPages)"
+                            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Siguiente
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showEditModal)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto outline-none focus:outline-none">
+        <div class="relative w-full max-w-lg mx-auto my-6">
+            <div class="relative flex flex-col w-full bg-white border-0 rounded-lg shadow-lg outline-none focus:outline-none">
+                <div class="flex items-start justify-between p-5 border-b border-solid rounded-t border-blueGray-200">
+                    <h5 class="text-xl font-semibold text-gray-800">Editar Número Telefónico</h5>
+                    <button 
+                        @onclick="CloseModals" 
+                        class="float-right text-3xl leading-none font-semibold outline-none focus:outline-none text-gray-500 hover:text-gray-700"
+                    >
+                        ×
+                    </button>
+                </div>
+                <div class="relative p-6 flex-auto">
+                    <EditForm Model="@editNumero" OnValidSubmit="SaveNumber" class="space-y-4">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary class="text-red-600" />
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Número Telefónico</label>
+                            <InputText 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" 
+                                @bind-Value="editNumero.Numero" 
+                                disabled="true" 
+                            />
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Número de Redirección</label>
+                            <InputText 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" 
+                                @bind-Value="editNumero.NumeroRedireccion" 
+                            />
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Usuario</label>
+                            <select 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
+                                @bind="editNumero.UserId"
+                            >
+                                <option value="">-- Sin asignar --</option>
+                                @foreach (var user in usuarios)
+                                {
+                                    <option value="@user.Id">@user.Email</option>
+                                }
+                            </select>
+                        </div>
+                        
+                        <div class="flex items-center">
+                            <InputCheckbox 
+                                id="activo" 
+                                class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" 
+                                @bind-Value="editNumero.Activo" 
+                            />
+                            <label for="activo" class="ml-2 block text-sm text-gray-900">
+                                Activo
+                            </label>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Fecha de Compra</label>
+                            <InputDate 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" 
+                                @bind-Value="editNumero.FechaCompra" 
+                            />
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Fecha de Expiración</label>
+                            <InputDate 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" 
+                                @bind-Value="editNumero.FechaExpiracion" 
+                            />
+                        </div>
+                        
+                        <div class="flex items-center">
+                            <InputCheckbox 
+                                id="smsHabilitado" 
+                                class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" 
+                                @bind-Value="editNumero.SMSHabilitado" 
+                            />
+                            <label for="smsHabilitado" class="ml-2 block text-sm text-gray-900">
+                                Habilitar SMS
+                            </label>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Costo Mensual</label>
+                            <InputNumber 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" 
+                                @bind-Value="editNumero.CostoMensual" 
+                            />
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Costo SMS</label>
+                            <InputNumber 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" 
+                                @bind-Value="editNumero.CostoSMS" 
+                            />
+                        </div>
+                        
+                        <div class="flex justify-end space-x-2">
+                            <button 
+                                type="button" 
+                                @onclick="CloseModals" 
+                                class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                type="submit" 
+                                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+                            >
+                                Guardar
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="fixed inset-0 z-40 bg-black opacity-25"></div>
+}
+
+@if (showDetailsModal)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto outline-none focus:outline-none">
+        <div class="relative w-full max-w-4xl mx-auto my-6">
+            <div class="relative flex flex-col w-full bg-white border-0 rounded-lg shadow-lg outline-none focus:outline-none">
+                <div class="flex items-start justify-between p-5 border-b border-solid rounded-t border-blueGray-200">
+                    <h5 class="text-xl font-semibold text-gray-800">Detalles del Número</h5>
+                    <button 
+                        @onclick="CloseModals" 
+                        class="float-right text-3xl leading-none font-semibold outline-none focus:outline-none text-gray-500 hover:text-gray-700"
+                    >
+                        ×
+                    </button>
+                </div>
+                <div class="relative p-6 flex-auto">
+                    @if (selectedNumero != null)
+                    {
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <div>
+                                <h6 class="text-lg font-semibold text-gray-700 mb-4">Información del Número</h6>
+                                <div class="space-y-3">
+                                    <div>
+                                        <strong class="text-gray-600">Número:</strong>
+                                        <p class="text-gray-800">@selectedNumero.Numero</p>
+                                    </div>
+                                    <div>
+                                        <strong class="text-gray-600">Número de Redirección:</strong>
+                                        <p class="text-gray-800">@selectedNumero.NumeroRedireccion</p>
+                                    </div>
+                                    <div>
+                                        <strong class="text-gray-600">Estado:</strong>
+                                        <span class="@GetStatusBadgeClass(selectedNumero.Activo) px-2 py-1 rounded-full text-xs">
+                                            @(selectedNumero.Activo ? "Activo" : "Inactivo")
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <strong class="text-gray-600">SMS:</strong>
+                                        <span class="@(selectedNumero.SMSHabilitado ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800") px-2 py-1 rounded-full text-xs">
+                                            @(selectedNumero.SMSHabilitado ? "Habilitado" : "No habilitado")
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <h6 class="text-lg font-semibold text-gray-700 mb-4">Fechas y Usuario</h6>
+                                <div class="space-y-3">
+                                    <div>
+                                        <strong class="text-gray-600">Fecha de Compra:</strong>
+                                        <p class="text-gray-800">@selectedNumero.FechaCompra.ToString("dd/MM/yyyy HH:mm")</p>
+                                    </div>
+                                    <div>
+                                        <strong class="text-gray-600">Fecha de Expiración:</strong>
+                                        <p class="text-gray-800">@selectedNumero.FechaExpiracion.ToString("dd/MM/yyyy")</p>
+                                    </div>
+                                    <div>
+                                        <strong class="text-gray-600">Usuario:</strong>
+                                        <p class="text-gray-800">@(selectedNumero.Usuario?.Email ?? "Sin asignar")</p>
+                                    </div>
+                                    <div>
+                                        <strong class="text-gray-600">Costo Mensual:</strong>
+                                        <p class="text-gray-800">$@selectedNumero.CostoMensual.ToString("F2")</p>
+                                    </div>
+                                    <div>
+                                        <strong class="text-gray-600">Costo SMS:</strong>
+                                        <p class="text-gray-800">$@(selectedNumero.CostoSMS?.ToString("F2") ?? "N/A")</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-8">
+                            <h6 class="text-lg font-semibold text-gray-700 mb-4">Actividad Reciente</h6>
+                            <div class="border rounded-lg">
+                                <div class="flex border-b">
+                                    <button 
+                                        class="w-1/2 py-3 text-center font-semibold text-gray-700 @(activeTab == "calls" ? "bg-gray-100" : "hover:bg-gray-50")"
+                                        @onclick='() => activeTab = "calls"'
+                                    >
+                                        Llamadas
+                                    </button>
+                                    <button 
+                                        class="w-1/2 py-3 text-center font-semibold text-gray-700 @(activeTab == "sms" ? "bg-gray-100" : "hover:bg-gray-50")"
+                                        @onclick='() => activeTab = "sms"'
+                                    >
+                                        SMS
+                                    </button>
+                                </div>
+                                <div class="p-4">
+                                    @if (activeTab == "calls")
+                                    {
+                                        @if (selectedNumero.LogsLlamadas?.Any() == true)
+                                        {
+                                            <div class="overflow-x-auto">
+                                                <table class="w-full">
+                                                    <thead>
+                                                        <tr class="border-b">
+                                                            <th class="py-2 text-left text-sm text-gray-600">Destino</th>
+                                                            <th class="py-2 text-left text-sm text-gray-600">Fecha</th>
+                                                            <th class="py-2 text-left text-sm text-gray-600">Duración</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var llamada in selectedNumero.LogsLlamadas.OrderByDescending(l => l.FechaHora).Take(5))
+                                                        {
+                                                            <tr class="border-b last:border-b-0">
+                                                                <td class="py-2">@llamada.NumeroTelefonico</td>
+                                                                <td class="py-2">@llamada.FechaHora.ToString("dd/MM/yyyy HH:mm")</td>
+                                                                <td class="py-2">@(llamada.Duracion.ToString(@"hh\:mm\:ss") ?? "N/A")</td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+                                                <p class="text-blue-700">No hay registros de llamadas para este número.</p>
+                                            </div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        @if (selectedNumero.LogsSMS?.Any() == true)
+                                        {
+                                            <div class="overflow-x-auto">
+                                                <table class="w-full">
+                                                    <thead>
+                                                        <tr class="border-b">
+                                                            <th class="py-2 text-left text-sm text-gray-600">Origen</th>
+                                                            <th class="py-2 text-left text-sm text-gray-600">Fecha</th>
+                                                            <th class="py-2 text-left text-sm text-gray-600">Destino</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var sms in selectedNumero.LogsSMS.OrderByDescending(s => s.FechaHora).Take(5))
+                                                        {
+                                                            <tr class="border-b last:border-b-0">
+                                                                <td class="py-2">@sms.NumeroOrigen</td>
+                                                                <td class="py-2">@sms.FechaHora.ToString("dd/MM/yyyy HH:mm")</td>
+                                                                <td class="py-2">@sms.NumeroTelefonico</td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        }
+                                        else{
+                                            <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+                                                <p class="text-blue-700">No hay registros de SMS para este número.</p>
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="p-5 border-t flex justify-end">
+                    <button 
+                        @onclick="CloseModals" 
+                        class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                    >
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="fixed inset-0 z-40 bg-black opacity-25"></div>
+}
+
+
+@code {
+    private List<NumeroTelefonico> allNumeros = new();
+    private List<NumeroTelefonico> filteredNumeros = new();
+    private List<ApplicationUser> usuarios = new();
+    private bool loading = true;
+    private string searchTerm = "";
+    private string filterStatus = "";
+    
+    // Paginación
+    private int pageSize = 10;
+    private int currentPage = 1;
+    private int totalPages => (int)Math.Ceiling(filteredNumeros.Count / (double)pageSize);
+    private int displayPageCount = 5;
+    private int startPage => Math.Max(1, currentPage - (displayPageCount / 2));
+    private int endPage => Math.Min(totalPages, startPage + displayPageCount - 1);
+    
+    // Ordenamiento
+    private string sortField = nameof(NumeroTelefonico.FechaCompra);
+    private bool sortAscending = false;
+    
+    // Modales
+    private bool showEditModal = false;
+    private bool showDetailsModal = false;
+    private NumeroTelefonico selectedNumero;
+    private NumeroTelefonico editNumero = new();
+
+    private string activeTab = "calls";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        
+        // Cargar números
+        allNumeros = await DbContext.NumerosTelefonicos
+            .Include(n => n.Usuario)
+            .Include(n => n.LogsLlamadas)
+            .Include(n => n.LogsSMS)
+            .ToListAsync();
+            
+        // Cargar usuarios para selector
+        usuarios = await DbContext.Users.ToListAsync();
+        
+        // Aplicar filtros iniciales
+        ApplyFilters();
+        
+        loading = false;
+    }
+
+    private void ApplyFilters()
+    {
+        var query = allNumeros.AsQueryable();
+        
+        // Filtro por texto de búsqueda
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var search = searchTerm.Trim().ToLower();
+            query = query.Where(n =>
+                (n.Numero != null && n.Numero.ToLower().Contains(search)) ||
+                (n.NumeroRedireccion != null && n.NumeroRedireccion.ToLower().Contains(search)) ||
+                (n.Usuario != null && n.Usuario.Email != null && n.Usuario.Email.ToLower().Contains(search))
+            );
+        }
+        // Filtro por estado
+        if (!string.IsNullOrWhiteSpace(filterStatus))
+        {
+            var isActive = filterStatus == "true";
+            query = query.Where(n => n.Activo == isActive);
+        }
+        
+        filteredNumeros = query.ToList();
+        
+        // Aplicar ordenamiento
+        ApplySorting();
+    }
+
+    private void ApplySorting()
+    {
+        filteredNumeros = sortField switch
+        {
+            nameof(NumeroTelefonico.Numero) => sortAscending 
+                ? filteredNumeros.OrderBy(n => n.Numero).ToList() 
+                : filteredNumeros.OrderByDescending(n => n.Numero).ToList(),
+                
+            nameof(NumeroTelefonico.Activo) => sortAscending 
+                ? filteredNumeros.OrderBy(n => n.Activo).ToList() 
+                : filteredNumeros.OrderByDescending(n => n.Activo).ToList(),
+                
+            nameof(NumeroTelefonico.FechaCompra) => sortAscending 
+                ? filteredNumeros.OrderBy(n => n.FechaCompra).ToList() 
+                : filteredNumeros.OrderByDescending(n => n.FechaCompra).ToList(),
+                
+            nameof(NumeroTelefonico.FechaExpiracion) => sortAscending 
+                ? filteredNumeros.OrderBy(n => n.FechaExpiracion).ToList() 
+                : filteredNumeros.OrderByDescending(n => n.FechaExpiracion).ToList(),
+                
+            _ => filteredNumeros
+        };
+        
+        currentPage = 1;
+    }
+
+    private void SortBy(string field)
+    {
+        if (sortField == field)
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            sortField = field;
+            sortAscending = true;
+        }
+        
+        ApplySorting();
+    }
+
+    private string GetSortIcon(string field)
+    {
+        if (sortField != field)
+            return "";
+            
+        return sortAscending ? "↑" : "↓";
+    }
+
+    private void HandleSearch(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || string.IsNullOrEmpty(searchTerm))
+        {
+            ApplyFilters();
+        }
+    }
+
+    private void ResetFilters()
+    {
+        searchTerm = "";
+        filterStatus = "";
+        ApplyFilters();
+    }
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1)
+            currentPage--;
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < totalPages)
+            currentPage++;
+    }
+
+    private void GoToPage(int page)
+    {
+        currentPage = page;
+    }
+
+    private void CloseModals()
+    {
+        showEditModal = false;
+        showDetailsModal = false;
+    }
+
+    private void EditNumber(NumeroTelefonico numero)
+    {
+        selectedNumero = numero;
+        editNumero = new NumeroTelefonico
+        {
+            Id = numero.Id,
+            Numero = numero.Numero,
+            NumeroRedireccion = numero.NumeroRedireccion,
+            UserId = numero.UserId,
+            Activo = numero.Activo,
+            FechaCompra = numero.FechaCompra,
+            FechaExpiracion = numero.FechaExpiracion,
+            SMSHabilitado = numero.SMSHabilitado,
+            CostoMensual = numero.CostoMensual,
+            CostoSMS = numero.CostoSMS
+        };
+        
+        showEditModal = true;
+    }
+
+    private void ViewNumberDetails(NumeroTelefonico numero)
+    {
+        selectedNumero = numero;
+        showDetailsModal = true;
+    }
+
+    private async Task ToggleNumberStatus(NumeroTelefonico numero)
+    {
+        try
+        {
+            var dbNumero = await DbContext.NumerosTelefonicos.FindAsync(numero.Id);
+            if (dbNumero == null)
+            {
+                // Mostrar notificación de error
+                return;
+            }
+            
+            // Cambiar estado
+            dbNumero.Activo = !dbNumero.Activo;
+            
+            await DbContext.SaveChangesAsync();
+            
+            // Actualizar en la lista local
+            var index = allNumeros.FindIndex(n => n.Id == dbNumero.Id);
+            if (index >= 0)
+            {
+                allNumeros[index].Activo = dbNumero.Activo;
+            }
+            
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            // Manejar error (podrías usar un servicio de notificación)
+            Console.WriteLine($"Error al cambiar estado: {ex.Message}");
+        }
+    }
+
+    private async Task SaveNumber()
+    {
+        try
+        {
+            var dbNumero = await DbContext.NumerosTelefonicos.FindAsync(editNumero.Id);
+            if (dbNumero == null)
+            {
+                // Mostrar notificación de error
+                return;
+            }
+            
+            // Actualizar propiedades editables
+            dbNumero.NumeroRedireccion = editNumero.NumeroRedireccion;
+            dbNumero.UserId = editNumero.UserId;
+            dbNumero.Activo = editNumero.Activo;
+            dbNumero.FechaCompra = editNumero.FechaCompra;
+            dbNumero.FechaExpiracion = editNumero.FechaExpiracion;
+            dbNumero.SMSHabilitado = editNumero.SMSHabilitado;
+            dbNumero.CostoMensual = editNumero.CostoMensual;
+            dbNumero.CostoSMS = editNumero.CostoSMS;
+            
+            await DbContext.SaveChangesAsync();
+            
+            // Actualizar en la lista local
+            var index = allNumeros.FindIndex(n => n.Id == dbNumero.Id);
+            if (index >= 0)
+            {
+                allNumeros[index].NumeroRedireccion = dbNumero.NumeroRedireccion;
+                allNumeros[index].UserId = dbNumero.UserId;
+                allNumeros[index].Activo = dbNumero.Activo;
+                allNumeros[index].FechaCompra = dbNumero.FechaCompra;
+                allNumeros[index].FechaExpiracion = dbNumero.FechaExpiracion;
+                allNumeros[index].SMSHabilitado = dbNumero.SMSHabilitado;
+                allNumeros[index].CostoMensual = dbNumero.CostoMensual;
+                allNumeros[index].CostoSMS = dbNumero.CostoSMS;
+
+                // Actualizar también el usuario si cambió
+                if (string.IsNullOrEmpty(dbNumero.UserId))
+                {
+                    allNumeros[index].Usuario = null;
+                }
+                else if (allNumeros[index].Usuario == null || allNumeros[index].Usuario.Id != dbNumero.UserId)
+                {
+                    allNumeros[index].Usuario = usuarios.FirstOrDefault(u => u.Id == dbNumero.UserId);
+                }
+            }
+
+            ApplyFilters();
+
+            showEditModal = false;
+        }
+        catch (Exception ex)
+        {
+            // Manejar error (podrías usar un servicio de notificación)
+            Console.WriteLine($"Error al guardar: {ex.Message}");
+        }
+    }
+
+    private string GetStatusBadgeClass(bool isActive)
+    {
+        return isActive ? "bg-success" : "bg-danger";
+    }
+}

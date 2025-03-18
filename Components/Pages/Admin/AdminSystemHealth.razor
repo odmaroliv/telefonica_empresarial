@@ -1,0 +1,508 @@
+﻿@page "/admin/system-health"
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Json
+@using Microsoft.Extensions.Diagnostics.HealthChecks
+@attribute [Authorize(Roles = "Admin")]
+@inject IHttpClientFactory HttpClientFactory
+@inject IJSRuntime JSRuntime
+
+<div class="container mx-auto px-4 py-6">
+    <div class="bg-white rounded-lg shadow-md mb-6">
+        <div class="p-6 border-b flex justify-between items-center">
+            <h4 class="text-2xl font-semibold text-gray-800">Estado del Sistema</h4>
+            <button @onclick="RefreshHealthData"
+                    class="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+                </svg>
+                Actualizar
+            </button>
+        </div>
+        <div class="p-6">
+            @if (loading)
+            {
+                <div class="flex justify-center my-12">
+                    <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                </div>
+            }
+            else if (healthData == null)
+            {
+                <div class="bg-red-50 border-l-4 border-red-400 p-4">
+                    <div class="flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-400 mr-3" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                        </svg>
+                        <p class="text-red-700">
+                            Error al obtener datos de estado del sistema. Por favor, inténtelo de nuevo más tarde.
+                        </p>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="grid md:grid-cols-3 gap-6 mb-8">
+                    <div class="bg-white rounded-lg shadow-md p-6 text-center">
+                        <div class="text-6xl mb-4 @(systemStatus == "Healthy" ? "text-green-600" : systemStatus == "Degraded" ? "text-yellow-600" : "text-red-600")">
+                            @if (systemStatus == "Healthy")
+                            {
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                                </svg>
+                            }
+                            else if (systemStatus == "Degraded")
+                            {
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                </svg>
+                            }
+                            else
+                            {
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                                </svg>
+                            }
+                        </div>
+                        <h5 class="text-xl font-semibold mb-2">Estado General</h5>
+                        <span class="@(systemStatus == "Healthy" ? "bg-green-100 text-green-800" : systemStatus == "Degraded" ? "bg-yellow-100 text-yellow-800" : "bg-red-100 text-red-800") px-2 py-1 rounded-full text-xs">
+                            @systemStatus
+                        </span>
+                    </div>
+                    <div class="bg-white rounded-lg shadow-md p-6 text-center">
+                        <div class="text-6xl mb-4 text-blue-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M3 12v3c0 1.657 3.134 3 7 3s7-1.343 7-3v-3c0 1.657-3.134 3-7 3s-7-1.343-7-3z" />
+                                <path d="M3 7v3c0 1.657 3.134 3 7 3s7-1.343 7-3V7c0 1.657-3.134 3-7 3S3 8.657 3 7z" />
+                                <path d="M17 5c0 1.657-3.134 3-7 3S3 6.657 3 5s3.134-3 7-3 7 1.343 7 3z" />
+                            </svg>
+                        </div>
+                        <h5 class="text-xl font-semibold mb-2">Base de Datos</h5>
+                        <span class="@(dbStatus == "Healthy" ? "bg-green-100 text-green-800" : dbStatus == "Degraded" ? "bg-yellow-100 text-yellow-800" : "bg-red-100 text-red-800") px-2 py-1 rounded-full text-xs">
+                            @dbStatus
+                        </span>
+                    </div>
+                    <div class="bg-white rounded-lg shadow-md p-6 text-center">
+                        <div class="text-6xl mb-4 text-blue-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M9.04 3.294c.395-1.058 1.837-1.058 2.232 0l2.538 6.787h6.596c1.105 0 1.564 1.413.672 2.059l-5.515 4.34 2.168 6.532c.363 1.091-.9 1.996-1.835 1.337L10 16.447l-5.9 4.902c-.935.659-2.198-.246-1.835-1.337l2.168-6.532-5.515-4.34c-.892-.646-.433-2.059.672-2.059h6.596L9.04 3.294z" />
+                            </svg>
+                        </div>
+                        <h5 class="text-xl font-semibold mb-2">Servicios Externos</h5>
+                        <span class="@(externalStatus == "Healthy" ? "bg-green-100 text-green-800" : externalStatus == "Degraded" ? "bg-yellow-100 text-yellow-800" : "bg-red-100 text-red-800") px-2 py-1 rounded-full text-xs">
+                            @externalStatus
+                        </span>
+                    </div>
+                </div>
+
+                <h5 class="text-xl font-semibold text-gray-800 mb-4">Detalles por Componente</h5>
+                <div class="overflow-x-auto">
+                    <table class="w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Componente</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descripción</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tiempo (ms)</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Última Ejecución</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            @foreach (var entry in healthData.entries)
+                            {
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">@entry.Key</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="@GetLogLevelBadgeClass(entry.Value.status) px-2 py-1 rounded-full text-xs">
+                                            @entry.Value.status
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">@entry.Value.description</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">@entry.Value.duration.TotalMilliseconds.ToString("F2")</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">@FormatDateTime(healthData.status.timestamp)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+        <div class="bg-white rounded-lg shadow-md">
+            <div class="p-6 border-b">
+                <h5 class="text-xl font-semibold text-gray-800">Uso de Recursos</h5>
+            </div>
+            <div class="p-6">
+                @if (loading)
+                {
+                    <div class="flex justify-center my-12">
+                        <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                    </div>
+                }
+                else
+                {
+                    <div class="space-y-6">
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <h6 class="text-sm font-medium text-gray-600">CPU</h6>
+                                <span class="text-sm font-medium text-gray-600">@cpuUsage%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                <div class="@GetCpuProgressClass(cpuUsage) h-2.5 rounded-full" style="width: @(cpuUsage)%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <h6 class="text-sm font-medium text-gray-600">Memoria</h6>
+                                <span class="text-sm font-medium text-gray-600">@memoryUsage%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                <div class="@GetMemoryProgressClass(memoryUsage) h-2.5 rounded-full" style="width: @(memoryUsage)%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <h6 class="text-sm font-medium text-gray-600">Espacio en Disco</h6>
+                                <span class="text-sm font-medium text-gray-600">@diskUsage% usado</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                <div class="@GetDiskProgressClass(diskUsage) h-2.5 rounded-full" style="width: @(diskUsage)%"></div>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">
+                                Espacio libre: @(100 - diskUsage)% (@((100 - diskUsage) * 0.1)GB de 10GB)
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md">
+            <div class="p-6 border-b">
+                <h5 class="text-xl font-semibold text-gray-800">Estado de Quartz Jobs</h5>
+            </div>
+            <div class="p-6">
+                @if (loading)
+                {
+                    <div class="flex justify-center my-12">
+                        <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                    </div>
+                }
+                else if (jobsStatus == null)
+                {
+                    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                        <p class="text-yellow-700">No se pudo obtener información sobre los jobs programados.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="overflow-x-auto">
+                        <table class="w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Job</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Última Ejecución</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Próxima Ejecución</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                @foreach (var job in jobsStatus)
+                                {
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">@job.Name</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">@(job.LastRun ?? "Nunca")</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">@(job.NextRun ?? "No programado")</td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="@(job.IsRunning ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800") px-2 py-1 rounded-full text-xs">
+                                                @(job.IsRunning ? "En ejecución" : "Esperando")
+                                            </span>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md mt-6">
+        <div class="p-6 border-b">
+            <h5 class="text-xl font-semibold text-gray-800">Registro de Errores Recientes</h5>
+        </div>
+        <div class="p-6">
+            @if (loading)
+            {
+                <div class="flex justify-center my-12">
+                    <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                </div>
+            }
+            else if (errors == null || !errors.Any())
+            {
+                <div class="bg-green-50 border-l-4 border-green-400 p-4">
+                    <div class="flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-400 mr-3" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                        </svg>
+                        <p class="text-green-700">
+                            No se han encontrado errores recientes. ¡El sistema está funcionando correctamente!
+                        </p>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="overflow-x-auto">
+                    <table class="w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nivel</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Categoría</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mensaje</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            @foreach (var error in errors)
+                            {
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">@error.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="@GetLogLevelBadgeClass(error.Level) px-2 py-1 rounded-full text-xs">
+                                            @error.Level
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">@error.Category</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">@error.Message</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+
+@code {
+    private bool loading = true;
+    private HealthReport healthData;
+    private string systemStatus = "Unknown";
+    private string dbStatus = "Unknown";
+    private string externalStatus = "Unknown";
+    private int cpuUsage = 0;
+    private int memoryUsage = 0;
+    private int diskUsage = 0;
+    private List<JobStatusDto> jobsStatus;
+    private List<LogEntryDto> errors;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshHealthData();
+    }
+
+    private async Task RefreshHealthData()
+    {
+        loading = true;
+        
+        try
+        {
+            var client = HttpClientFactory.CreateClient();
+            
+            // Obtener datos de health check
+            healthData = await client.GetFromJsonAsync<HealthReport>("/health/details");
+            
+            if (healthData != null)
+            {
+                systemStatus = healthData.status.status;
+                
+                // Extraer estados específicos
+                if (healthData.entries.TryGetValue("database", out var dbEntry))
+                {
+                    dbStatus = dbEntry.status;
+                }
+                
+                // Considerar los servicios externos (Twilio, etc.)
+                var externalEntries = healthData.entries
+                    .Where(e => e.Key.Contains("api") || e.Key.Contains("twilio"))
+                    .Select(e => e.Value);
+                    
+                if (externalEntries.Any())
+                {
+                    if (externalEntries.All(e => e.status == "Healthy"))
+                    {
+                        externalStatus = "Healthy";
+                    }
+                    else if (externalEntries.Any(e => e.status == "Unhealthy"))
+                    {
+                        externalStatus = "Unhealthy";
+                    }
+                    else
+                    {
+                        externalStatus = "Degraded";
+                    }
+                }
+            }
+            
+            // Simulación de métricas de recursos
+            // En producción, estos datos vendrían de un endpoint real que monitoree recursos del servidor
+            Random rnd = new Random();
+            cpuUsage = rnd.Next(10, 60);  // Simulación de uso de CPU entre 10% y 60%
+            memoryUsage = rnd.Next(30, 80);  // Simulación de uso de memoria entre 30% y 80%
+            diskUsage = rnd.Next(40, 90);  // Simulación de uso de disco entre 40% y 90%
+            
+            // Obtener estado de los jobs
+            // En producción, esto vendría de un endpoint que consulte el estado de Quartz
+            jobsStatus = new List<JobStatusDto>
+            {
+                new JobStatusDto 
+                { 
+                    Name = "LimpiezaDatosJob", 
+                    LastRun = DateTime.Now.AddDays(-1).ToString("dd/MM/yyyy HH:mm"),
+                    NextRun = DateTime.Today.AddDays(1).AddHours(3).ToString("dd/MM/yyyy HH:mm"),
+                    IsRunning = false
+                },
+                new JobStatusDto 
+                { 
+                    Name = "RenovacionNumerosJob", 
+                    LastRun = DateTime.Now.AddDays(-1).ToString("dd/MM/yyyy HH:mm"),
+                    NextRun = DateTime.Today.AddDays(1).AddHours(2).ToString("dd/MM/yyyy HH:mm"),
+                    IsRunning = false
+                },
+                new JobStatusDto 
+                { 
+                    Name = "LlamadasMonitorJob", 
+                    LastRun = DateTime.Now.AddMinutes(-1).ToString("dd/MM/yyyy HH:mm:ss"),
+                    NextRun = DateTime.Now.AddSeconds(60).ToString("dd/MM/yyyy HH:mm:ss"),
+                    IsRunning = false
+                }
+            };
+            
+            // Simular algunos errores recientes
+            // En producción, estos datos vendrían de un servicio de logging
+            errors = new List<LogEntryDto>
+            {
+                new LogEntryDto
+                {
+                    Timestamp = DateTime.Now.AddHours(-2),
+                    Level = "Error",
+                    Category = "TwilioService",
+                    Message = "No se pudo conectar con la API de Twilio. Timeout después de 30 segundos."
+                },
+                new LogEntryDto
+                {
+                    Timestamp = DateTime.Now.AddHours(-5),
+                    Level = "Warning",
+                    Category = "SaldoService",
+                    Message = "Saldo bajo para el usuario ID: 3fa85f64. Saldo actual: $23.50"
+                },
+                new LogEntryDto
+                {
+                    Timestamp = DateTime.Now.AddDays(-1),
+                    Level = "Error",
+                    Category = "StripeService",
+                    Message = "Error al procesar pago: La tarjeta fue rechazada (código: card_declined)"
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            healthData = null;
+            Console.WriteLine($"Error al obtener datos de salud: {ex.Message}");
+            // En producción: loggear el error
+        }
+        
+        loading = false;
+    }
+
+                    private string GetCpuProgressClass(int usage)
+                    {
+                        if (usage < 50)
+                            return "bg-green-500";
+                        else if (usage < 80)
+                            return "bg-yellow-500";
+                        else
+                            return "bg-red-500";
+                    }
+
+                    private string GetMemoryProgressClass(int usage)
+                    {
+                        if (usage < 60)
+                            return "bg-green-500";
+                        else if (usage < 85)
+                            return "bg-yellow-500";
+                        else
+                            return "bg-red-500";
+                    }
+
+                    private string GetDiskProgressClass(int usage)
+                    {
+                        if (usage < 70)
+                            return "bg-green-500";
+                        else if (usage < 90)
+                            return "bg-yellow-500";
+                        else
+                            return "bg-red-500";
+                    }
+
+                    
+
+    private string FormatDateTime(DateTime? dateTime)
+    {
+        return dateTime?.ToString("dd/MM/yyyy HH:mm:ss") ?? "N/A";
+    }
+
+                    private string GetLogLevelBadgeClass(string level)
+                    {
+                        return level?.ToLower() switch
+                        {
+                            "error" => "bg-red-100 text-red-800",
+                            "warning" => "bg-yellow-100 text-yellow-800",
+                            "information" => "bg-blue-100 text-blue-800",
+                            "debug" => "bg-gray-100 text-gray-800",
+                            _ => "bg-gray-100 text-gray-800"
+                        };
+                    }
+
+    // Clases para deserialización
+    public class HealthReport
+    {
+        public Dictionary<string, HealthEntry> entries { get; set; }
+        public HealthStatus status { get; set; }
+    }
+
+    public class HealthEntry
+    {
+        public string status { get; set; }
+        public string description { get; set; }
+        public TimeSpan duration { get; set; }
+        public Dictionary<string, object> data { get; set; }
+    }
+
+    public class HealthStatus
+    {
+        public string status { get; set; }
+        public DateTime timestamp { get; set; }
+    }
+
+    public class JobStatusDto
+    {
+        public string Name { get; set; }
+        public string LastRun { get; set; }
+        public string NextRun { get; set; }
+        public bool IsRunning { get; set; }
+    }
+
+    public class LogEntryDto
+    {
+        public DateTime Timestamp { get; set; }
+        public string Level { get; set; }
+        public string Category { get; set; }
+        public string Message { get; set; }
+    }
+}
