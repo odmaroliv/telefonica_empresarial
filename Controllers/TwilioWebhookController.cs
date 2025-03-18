@@ -57,7 +57,7 @@ namespace TelefonicaEmpresarial.Controllers
             {
                 // Manejar error
                 var response = new VoiceResponse();
-                response.Say("Ocurrió un error al procesar su llamada.", voice: "alice", language: "es-MX");
+                //response.Say("Ocurrió un error al procesar su llamada.", voice: "alice", language: "es-MX");
                 return Content(response.ToString(), "application/xml");
             }
         }
@@ -79,7 +79,7 @@ namespace TelefonicaEmpresarial.Controllers
                 // (Este endpoint se usará como alternativa si prefieres gestionar las redirecciones centralmente)
 
                 var response = new VoiceResponse();
-                response.Say("Este número no tiene configurada una redirección válida.", voice: "alice", language: "es-MX");
+                //response.Say("Este número no tiene configurada una redirección válida.", voice: "alice", language: "es-MX");
 
                 return Content(response.ToString(), "application/xml");
             }
@@ -88,7 +88,7 @@ namespace TelefonicaEmpresarial.Controllers
                 _logger.LogError(ex, "Error al procesar llamada entrante");
 
                 var response = new VoiceResponse();
-                response.Say("Lo sentimos, ha ocurrido un error al procesar su llamada.", voice: "alice", language: "es-MX");
+                //response.Say("Lo sentimos, ha ocurrido un error al procesar su llamada.", voice: "alice", language: "es-MX");
 
                 return Content(response.ToString(), "application/xml");
             }

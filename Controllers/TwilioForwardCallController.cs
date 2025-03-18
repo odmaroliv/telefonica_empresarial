@@ -122,7 +122,7 @@ namespace TelefonicaEmpresarial.Controllers
 
                 // Crear TwiML para conectar al destino final
                 var response = new VoiceResponse();
-                response.Say("Conectando con su destino. Por favor espere.", voice: "alice", language: "es-MX");
+                //response.Say("Conectando con su destino. Por favor espere.", voice: "alice", language: "es-MX");
 
                 var dial = new Dial(callerId: numeroOrigen);
                 dial.Number(numeroDestino);
