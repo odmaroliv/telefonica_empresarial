@@ -1,0 +1,222 @@
+﻿@page "/saldo/recarga/suscripcion"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using TelefonicaEmpresaria.Models
+@using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services
+@using TelefonicaEmpresarial.Services
+@attribute [Authorize]
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager NavigationManager
+@inject ILogger<NuevaSuscripcionRecarga> Logger
+@inject IJSRuntime JSRuntime
+@inject IStripeService StripeService
+@inject ISaldoService SaldoService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<div class="container mx-auto px-4 py-8">
+    <div class="flex items-center mb-8">
+        <button @onclick="Regresar" class="mr-3 text-gray-500 hover:text-gray-700">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+        </button>
+        <h1 class="text-3xl font-bold text-gray-800">Nueva Suscripción de Recarga</h1>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <h2 class="text-xl font-semibold mb-4">Configura tu recarga automática mensual</h2>
+
+        <div class="mb-6">
+            <p class="text-gray-600 mb-4">Con este servicio, automáticamente cargaremos el monto seleccionado a tu tarjeta cada mes y lo añadiremos a tu saldo, asegurando que siempre tengas fondos para tus servicios.</p>
+
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-yellow-700">
+                            Este cargo mensual es <strong>adicional</strong> a los cargos automáticos por renovación de números telefónicos, que se descuentan directamente de tu saldo.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Monto mensual a recargar</label>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div @onclick="() => SelectMonto(120)"
+                         class="@(montoSeleccionado == 120 ? "border-blue-500 bg-blue-50" : "border-gray-200")
+                             border-2 rounded-lg p-4 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors">
+                        <div class="font-medium text-center">$100 MXN</div>
+                        <div class="text-sm text-gray-600 text-center mt-1">Plan básico</div>
+                    </div>
+                    <div @onclick="() => SelectMonto(200)"
+                         class="@(montoSeleccionado == 200 ? "border-blue-500 bg-blue-50" : "border-gray-200")
+                             border-2 rounded-lg p-4 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors
+                             ring-2 ring-blue-300">
+                        <div class="font-medium text-center">$200 MXN</div>
+                        <div class="text-sm text-gray-600 text-center mt-1">Plan recomendado</div>
+                        <div class="text-xs text-blue-600 font-medium text-center mt-1">Popular</div>
+                    </div>
+                    <div @onclick="() => SelectMonto(500)"
+                         class="@(montoSeleccionado == 500 ? "border-blue-500 bg-blue-50" : "border-gray-200")
+                             border-2 rounded-lg p-4 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors">
+                        <div class="font-medium text-center">$500 MXN</div>
+                        <div class="text-sm text-gray-600 text-center mt-1">Plan premium</div>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">O ingresa un monto personalizado</label>
+                    <div class="mt-1 relative rounded-md shadow-sm max-w-xs">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <span class="text-gray-500 sm:text-sm">$</span>
+                        </div>
+                        <input type="number" @bind="montoPersonalizado" @bind:event="oninput" @onchange="SelectMontoPersonalizado"
+                               class="focus:ring-blue-500 focus:border-blue-500 block w-full pl-7 pr-12 sm:text-sm border-gray-300 rounded-md"
+                               placeholder="0.00" min="50" max="10000" />
+                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                            <span class="text-gray-500 sm:text-sm">MXN</span>
+                        </div>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500">Monto mínimo: $120 MXN</p>
+                </div>
+            </div>
+
+            <div class="bg-gray-50 p-4 rounded-lg mb-6">
+                <h3 class="font-medium mb-2">Resumen:</h3>
+                <div class="flex justify-between mb-2">
+                    <span>Monto mensual a recargar:</span>
+                    <span class="font-semibold">$@montoSeleccionado.ToString("0.00") MXN</span>
+                </div>
+                <div class="flex justify-between mb-2">
+                    <span>Método de pago:</span>
+                    <span>Tarjeta registrada</span>
+                </div>
+                <div class="flex justify-between mb-2">
+                    <span>Frecuencia:</span>
+                    <span>Mensual</span>
+                </div>
+                <div class="flex justify-between mb-2">
+                    <span>Primer cargo:</span>
+                    <span>Hoy</span>
+                </div>
+                <div class="border-t border-gray-300 mt-2 pt-2">
+                    <div class="flex justify-between font-bold">
+                        <span>Total primer pago:</span>
+                        <span>$@montoSeleccionado.ToString("0.00") MXN</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-6 flex justify-end">
+            <button @onclick="Cancelar" class="mr-3 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                Cancelar
+            </button>
+            <button @onclick="CrearSuscripcion" class="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled="@(montoSeleccionado < 50 || cargando)">
+                @if (cargando)
+                {
+                    <span class="inline-flex items-center">
+                        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Procesando...
+                    </span>
+                }
+                else
+                {
+                    <span>Proceder al pago</span>
+                }
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private decimal montoSeleccionado = 200;
+    private decimal montoPersonalizado = 0;
+    private bool cargando = false;
+    private ApplicationUser user;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Obtener el usuario actual
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        user = await UserManager.GetUserAsync(authState.User);
+    }
+
+    private void SelectMonto(decimal monto)
+    {
+        montoSeleccionado = monto;
+        montoPersonalizado = 0;
+    }
+
+    private void SelectMontoPersonalizado()
+    {
+        if (montoPersonalizado >= 120)
+        {
+            montoSeleccionado = montoPersonalizado;
+        }
+    }
+
+    private async Task CrearSuscripcion()
+    {
+        if (montoSeleccionado < 50)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "El monto mínimo para una suscripción es de $50 MXN");
+            return;
+        }
+
+        if (user == null)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Error: No se pudo identificar al usuario");
+            return;
+        }
+
+        try
+        {
+            cargando = true;
+
+            // Llamar directamente al servicio de Stripe
+            var resultado = await StripeService.CrearSuscripcionRecargaSaldo(
+                user.StripeCustomerId,
+                montoSeleccionado);
+
+            if (!string.IsNullOrEmpty(resultado.Url))
+            {
+                // Redirigir al usuario a la página de checkout de Stripe
+                NavigationManager.NavigateTo(resultado.Url);
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Error: No se recibió una URL de pago válida");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al crear suscripción de recarga");
+            await JSRuntime.InvokeVoidAsync("alert", "Error al crear suscripción: " + ex.Message);
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private void Cancelar()
+    {
+        NavigationManager.NavigateTo("/saldo/suscripciones");
+    }
+
+    private void Regresar()
+    {
+        NavigationManager.NavigateTo("/saldo");
+    }
+}

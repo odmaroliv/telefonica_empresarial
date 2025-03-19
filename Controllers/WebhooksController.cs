@@ -197,6 +197,8 @@ namespace TelefonicaEmpresarial.Controllers
         {
             try
             {
+                _logger.LogInformation($"Webhook de SMS recibido - De: {evento.From}, A: {evento.To}, Mensaje: {(evento.Body?.Length > 20 ? evento.Body.Substring(0, 20) + "..." : evento.Body)}");
+
                 var requestUrl = $"{Request.Scheme}://{Request.Host}{Request.Path}{Request.QueryString}";
                 var parameters = Request.Form.ToDictionary(x => x.Key, x => x.Value.ToString());
                 var signature = Request.Headers["X-Twilio-Signature"].ToString();
@@ -214,51 +216,62 @@ namespace TelefonicaEmpresarial.Controllers
                     return Unauthorized("Firma Twilio inválida");
                 }
 
-                // Buscar el número en nuestra base de datos
+                // Buscar el número en nuestra base de datos usando una consulta más robusta
                 var numeroTelefonico = await _context.NumerosTelefonicos
                     .Include(n => n.Usuario)
+                    .Include(n => n.LogsSMS) // Asegurar que incluimos los SMS relacionados
                     .FirstOrDefaultAsync(n => n.Numero == evento.To);
 
-                if (numeroTelefonico != null && numeroTelefonico.SMSHabilitado)
+                if (numeroTelefonico == null)
                 {
-                    // Registrar el SMS
-                    var log = new LogSMS
-                    {
-                        NumeroTelefonicoId = numeroTelefonico.Id,
-                        NumeroOrigen = evento.From,
-                        FechaHora = DateTime.UtcNow,
-                        Mensaje = evento.Body,
-                        IdMensajePlivo = evento.MessageSid
-                    };
-
-                    _context.LogsSMS.Add(log);
-
-                    // Procesar el costo del SMS y descontar del saldo
-                    await ProcesarConsumoSMS(numeroTelefonico, log);
-
-                    await _context.SaveChangesAsync();
-
-                    _logger.LogInformation($"SMS procesado para número {numeroTelefonico.Numero} desde {evento.From}");
+                    _logger.LogWarning($"SMS recibido para número desconocido: {evento.To}");
+                    return Content("<Response></Response>", "application/xml");
                 }
-                else
+
+                if (!numeroTelefonico.SMSHabilitado)
                 {
-                    _logger.LogWarning($"SMS recibido para número no válido o sin SMS habilitado: {evento.To}");
+                    _logger.LogWarning($"SMS recibido para número sin SMS habilitado: {evento.To}");
+                    return Content("<Response></Response>", "application/xml");
                 }
+
+                // Registrar el SMS
+                var log = new LogSMS
+                {
+                    NumeroTelefonicoId = numeroTelefonico.Id,
+                    NumeroOrigen = evento.From,
+                    FechaHora = DateTime.UtcNow,
+                    Mensaje = evento.Body,
+                    IdMensajePlivo = evento.MessageSid
+                };
+
+                _context.LogsSMS.Add(log);
+
+                // Verificar si es un SMS duplicado
+                var duplicado = await _context.LogsSMS
+                    .AnyAsync(s => s.IdMensajePlivo == evento.MessageSid);
+
+                if (duplicado)
+                {
+                    _logger.LogWarning($"SMS duplicado detectado con MessageSid: {evento.MessageSid}");
+                    return Content("<Response></Response>", "application/xml");
+                }
+
+                // Procesar el costo del SMS
+                await ProcesarConsumoSMS(numeroTelefonico, log);
+
+                // Guardar los cambios
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation($"SMS procesado correctamente para número {numeroTelefonico.Numero} desde {evento.From}");
 
                 // Responder con TwiML vacío
-                return Content(
-                    "<Response></Response>",
-                    "application/xml"
-                );
+                return Content("<Response></Response>", "application/xml");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al procesar webhook de SMS");
                 // Aún devolvemos OK para no generar reintentos de Twilio
-                return Content(
-                    "<Response></Response>",
-                    "application/xml"
-                );
+                return Content("<Response></Response>", "application/xml");
             }
         }
 

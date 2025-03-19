@@ -15,6 +15,9 @@
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
 @inject ILogger<Index> Logger
+@inject IServiceScopeFactory ScopeFactory
+@inject ApplicationDbContext DbContext
+
 
 <div class="container mx-auto px-4 py-8">
     <h1 class="text-3xl font-bold mb-8 text-gray-800">Mi Saldo</h1>
@@ -61,6 +64,87 @@
                     <div class="flex justify-between">
                         <span class="text-gray-600">Promedio de consumo diario:</span>
                         <span class="font-medium">$@consumoPromedioDiario.ToString("0.00") MXN</span>
+                    </div>
+
+                    
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-4">Información de cargos automáticos</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="p-4 border rounded-lg bg-gray-50">
+                    <h3 class="font-medium text-blue-600 mb-2">Próximos cargos a tu saldo:</h3>
+                    @if (proximosCargosSaldo == null || !proximosCargosSaldo.Any())
+                    {
+                        <p class="text-sm text-gray-500">No hay próximos cargos programados a tu saldo.</p>
+                    }
+                    else
+                    {
+                        <div class="space-y-3">
+                            @foreach (var cargo in proximosCargosSaldo)
+                            {
+                                <div class="flex justify-between text-sm">
+                                    <span>@cargo.Concepto</span>
+                                    <span class="font-medium">$@cargo.Monto.ToString("0.00") MXN</span>
+                                </div>
+                                <div class="text-xs text-gray-500">
+                                    Fecha: @cargo.Fecha.ToString("dd/MM/yyyy")
+                                </div>
+                            }
+                        </div>
+                    }
+                    <div class="mt-3 text-xs text-blue-500">
+                        Estos cargos se descuentan directamente de tu saldo interno.
+                    </div>
+                </div>
+
+                <div class="p-4 border rounded-lg bg-gray-50">
+                    <h3 class="font-medium text-green-600 mb-2">Suscripciones de recarga automática:</h3>
+                    @if (suscripcionesRecarga == null || !suscripcionesRecarga.Any())
+                    {
+                        <p class="text-sm text-gray-500">No tienes suscripciones de recarga automática activas.</p>
+                        <div class="mt-2">
+                            <a href="/saldo/recarga/suscripcion" class="text-sm text-blue-600 hover:text-blue-800">Crear suscripción de recarga</a>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="space-y-3">
+                            @foreach (var suscripcion in suscripcionesRecarga)
+                            {
+                                <div class="flex justify-between text-sm">
+                                    <span>Recarga mensual</span>
+                                    <span class="font-medium">$@suscripcion.Monto.ToString("0.00") MXN</span>
+                                </div>
+                                <div class="text-xs text-gray-500">
+                                    Próximo cargo: @suscripcion.ProximoCargoEstimado.ToString("dd/MM/yyyy")
+                                </div>
+                            }
+                        </div>
+                    }
+                    <div class="mt-3 text-xs text-green-500">
+                        Estos montos se cargan a tu tarjeta y se acreditan a tu saldo automáticamente.
+                    </div>
+                    <div class="mt-2">
+                        <a href="/saldo/suscripciones" class="text-sm text-blue-600 hover:text-blue-800">Gestionar suscripciones</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6 px-4 py-3 bg-blue-50 rounded-lg">
+                <div class="flex items-start">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-blue-700">
+                            <strong>Importante:</strong> La renovación de tus servicios se realiza automáticamente con cargo a tu saldo. Asegúrate de mantener saldo suficiente para evitar interrupciones.
+                        </p>
                     </div>
                 </div>
             </div>
@@ -203,7 +287,9 @@
     private bool mostrarModalRecarga = false;
     private decimal montoRecarga = 120; // Cambiado de 100 a 120
     private string errorRecarga = "";
-    private bool recargaRecurrente = true; // Nueva variable para recarga recurrente, activada por defecto
+    private bool recargaRecurrente = true; 
+    private List<ProximoCargoDTO> proximosCargosSaldo;
+    private List<SuscripcionRecargaDTO> suscripcionesRecarga;
 
     [Inject]
     private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
@@ -211,6 +297,8 @@
     protected override async Task OnInitializedAsync()
     {
         await CargarDatos();
+        await CargarProximosCargos();
+        await CargarSuscripcionesRecarga();
     }
 
     private async Task CargarDatos()
@@ -386,6 +474,112 @@
             errorRecarga = $"Error: {ex.Message}";
         }
     }
+    private async Task CargarProximosCargos()
+    {
+        try
+        {
+            proximosCargosSaldo = new List<ProximoCargoDTO>();
+            var userId = user?.Id;
+
+            if (string.IsNullOrEmpty(userId))
+                return;
+
+            // Obtener números activos del usuario directamente de la base de datos
+            var numerosActivos = await DbContext.NumerosTelefonicos
+                .Where(n => n.UserId == userId && n.Activo)
+                .ToListAsync();
+
+            foreach (var numero in numerosActivos)
+            {
+                decimal montoRenovacion = numero.CostoMensual;
+                if (numero.SMSHabilitado && numero.CostoSMS.HasValue)
+                {
+                    montoRenovacion += numero.CostoSMS.Value;
+                }
+
+                proximosCargosSaldo.Add(new ProximoCargoDTO
+                    {
+                        Concepto = $"Renovación número {FormatearNumero(numero.Numero)}",
+                        Monto = montoRenovacion,
+                        Fecha = numero.FechaExpiracion
+                    });
+            }
+
+            // Ordenar por fecha más cercana
+            proximosCargosSaldo = proximosCargosSaldo
+                .OrderBy(c => c.Fecha)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar próximos cargos");
+            proximosCargosSaldo = new List<ProximoCargoDTO>();
+        }
+    }
+
+    private async Task CargarSuscripcionesRecarga()
+    {
+        try
+        {
+            suscripcionesRecarga = new List<SuscripcionRecargaDTO>();
+            var userId = user?.Id;
+
+            if (string.IsNullOrEmpty(userId))
+                return;
+
+            // Buscar transacciones activas de suscripción de recarga
+            var transacciones = await DbContext.Transacciones
+                .Where(t => t.UserId == userId &&
+                       t.Concepto.Contains("Recarga automática") &&
+                       t.Status == "Completado")
+                .ToListAsync();
+
+            foreach (var transaccion in transacciones)
+            {
+                // Estimar próximo cargo como un mes después de la fecha de la transacción
+                suscripcionesRecarga.Add(new SuscripcionRecargaDTO
+                    {
+                        Id = transaccion.Id,
+                        Monto = transaccion.Monto,
+                        ProximoCargoEstimado = transaccion.Fecha.AddMonths(1)
+                    });
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar suscripciones de recarga");
+            suscripcionesRecarga = new List<SuscripcionRecargaDTO>();
+        }
+    }
+
+    private string FormatearNumero(string numero)
+    {
+        // Simplificar para mostrar sólo los últimos dígitos
+        if (string.IsNullOrEmpty(numero))
+            return "";
+
+        if (numero.Length > 8)
+        {
+            return $"...{numero.Substring(numero.Length - 8)}";
+        }
+
+        return numero;
+    }
+
+    public class ProximoCargoDTO
+    {
+        public string Concepto { get; set; }
+        public decimal Monto { get; set; }
+        public DateTime Fecha { get; set; }
+    }
+
+    public class SuscripcionRecargaDTO
+    {
+        public int Id { get; set; }
+        public decimal Monto { get; set; }
+        public DateTime ProximoCargoEstimado { get; set; }
+    }
+}
 
     [Inject]
     private IServiceScopeFactory ScopeFactory { get; set; } = default!;

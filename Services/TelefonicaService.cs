@@ -378,6 +378,8 @@ namespace TelefonicaEmpresarial.Services
             }
         }
 
+        // Reemplazar el método HabilitarSMS en TelefonicaService.cs
+
         public async Task<bool> HabilitarSMS(int numeroId)
         {
             try
@@ -397,30 +399,15 @@ namespace TelefonicaEmpresarial.Services
                 // Obtener costo de SMS
                 var costoSMS = (await ObtenerCostos(numero.Numero)).CostoSMS;
 
-                // Activar SMS en Twilio
-                var resultado = await _twilioService.ActivarSMS(numero.PlivoUuid);
-                if (!resultado)
+                // PRIMERO: Verificar si el usuario tiene saldo suficiente
+                bool saldoSuficiente = await _saldoService.VerificarSaldoSuficiente(numero.UserId, costoSMS);
+                if (!saldoSuficiente)
                 {
-                    _logger.LogWarning($"No se pudo activar SMS en Twilio para número ID {numeroId}");
+                    _logger.LogWarning($"Saldo insuficiente para habilitar SMS en número ID {numeroId}");
                     return false;
                 }
 
-                //// Actualizar suscripción en Stripe
-                //if (!string.IsNullOrEmpty(numero.StripeSubscriptionId))
-                //{
-                //    var resultadoStripe = await _stripeService.AgregarSMSASuscripcion(
-                //        numero.StripeSubscriptionId,
-                //        costoSMS);
-
-                //    if (!resultadoStripe)
-                //    {
-                //        // Revertir cambios en Twilio
-                //        await _twilioService.DesactivarSMS(numero.PlivoUuid);
-                //        _logger.LogWarning($"No se pudo agregar SMS a la suscripción de Stripe para número ID {numeroId}");
-                //        return false;
-                //    }
-                //}
-
+                // SEGUNDO: Descontar el saldo
                 string concepto = $"Activación de servicio SMS para número {numero.Numero}";
                 var saldoDescontado = await _saldoService.DescontarSaldo(
                     numero.UserId,
@@ -434,8 +421,34 @@ namespace TelefonicaEmpresarial.Services
                     return false;
                 }
 
+                // TERCERO: Activar SMS en Twilio
+                var resultado = await _twilioService.ActivarSMS(numero.PlivoUuid);
+                if (!resultado)
+                {
+                    // Revertir el descuento del saldo si falla la activación
+                    await RevertirDescuentoSMS(numero.UserId, costoSMS, numero.Numero, numero.Id);
+                    _logger.LogWarning($"No se pudo activar SMS en Twilio para número ID {numeroId}");
+                    return false;
+                }
 
-                // Actualizar en nuestra base de datos
+                // CUARTO: Actualizar suscripción en Stripe si es necesario
+                //if (!string.IsNullOrEmpty(numero.StripeSubscriptionId))
+                //{
+                //    var resultadoStripe = await _stripeService.AgregarSMSASuscripcion(
+                //        numero.StripeSubscriptionId,
+                //        costoSMS);
+
+                //    if (!resultadoStripe)
+                //    {
+                //        // Revertir cambios en Twilio y saldo si falla Stripe
+                //        await _twilioService.DesactivarSMS(numero.PlivoUuid);
+                //        await RevertirDescuentoSMS(numero.UserId, costoSMS, numero.Numero, numero.Id);
+                //        _logger.LogWarning($"No se pudo agregar SMS a la suscripción de Stripe para número ID {numeroId}");
+                //        return false;
+                //    }
+                //}
+
+                // QUINTO: Actualizar en nuestra base de datos
                 numero.SMSHabilitado = true;
                 numero.CostoSMS = costoSMS;
                 await _retryPolicy.ExecuteAsync(async () =>
@@ -453,6 +466,45 @@ namespace TelefonicaEmpresarial.Services
             }
         }
 
+        // Método auxiliar para revertir el descuento de saldo en caso de falla
+        private async Task<bool> RevertirDescuentoSMS(string userId, decimal monto, string numeroTelefono, int numeroId)
+        {
+            try
+            {
+                // Registrar un movimiento de "Reembolso" por la falla en activación de SMS
+                string concepto = $"Reembolso por activación SMS fallida - {numeroTelefono}";
+
+                var movimiento = new MovimientoSaldo
+                {
+                    UserId = userId,
+                    Monto = monto,
+                    Concepto = concepto,
+                    Fecha = DateTime.UtcNow,
+                    TipoMovimiento = "Reembolso",
+                    NumeroTelefonicoId = numeroId
+                };
+
+                _context.MovimientosSaldo.Add(movimiento);
+
+                // Actualizar el saldo del usuario
+                var saldoCuenta = await _context.SaldosCuenta.FirstOrDefaultAsync(s => s.UserId == userId);
+                if (saldoCuenta != null)
+                {
+                    saldoCuenta.Saldo += monto;
+                    saldoCuenta.UltimaActualizacion = DateTime.UtcNow;
+                }
+
+                await _context.SaveChangesAsync();
+                _logger.LogInformation($"Reembolsado ${monto} por activación SMS fallida para usuario {userId}");
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al revertir descuento SMS para usuario {userId}");
+                return false;
+            }
+        }
         public async Task<bool> DeshabilitarSMS(int numeroId)
         {
             try
@@ -526,26 +578,31 @@ namespace TelefonicaEmpresarial.Services
                     return false;
                 }
 
-                // Cancelar suscripción en Stripe
-                if (!string.IsNullOrEmpty(numero.StripeSubscriptionId))
-                {
-                    await _stripeService.CancelarSuscripcion(numero.StripeSubscriptionId);
-                }
+                // No cancelar la subscripcion, por el usuario ya que el usuario puede tener mas numeros y la subscripcion es para abonar saldo virual no saldo en efecntivo
+                //if (!string.IsNullOrEmpty(numero.StripeSubscriptionId))
+                //{
+                //    await _stripeService.CancelarSuscripcion(numero.StripeSubscriptionId);
+                //    // Limpiar el campo de suscripción
+                //    numero.StripeSubscriptionId = null;
+                //}
 
-                // Liberar número en Twilio solo si está activo y ya se compró
-                if (numero.Activo && !string.IsNullOrEmpty(numero.PlivoUuid) && numero.PlivoUuid != "pendiente")
-                {
-                    await _twilioService.LiberarNumero(numero.PlivoUuid);
-                }
+                // NO liberamos el número en Twilio inmediatamente
+                // En su lugar, marcamos el número como "inactivo" pero no lo liberamos
+                // Esto permitirá que el usuario siga usando el número hasta la fecha de expiración
 
                 // Actualizar en nuestra base de datos
                 numero.Activo = false;
+
+                // Registrar la fecha de cancelación para referencia
+                // (añadir este campo a tu modelo si no existe)
+                // numero.FechaCancelacion = DateTime.UtcNow;
+
                 await _retryPolicy.ExecuteAsync(async () =>
                 {
                     await _context.SaveChangesAsync();
                 });
 
-                _logger.LogInformation($"Número ID {numeroId} cancelado correctamente");
+                _logger.LogInformation($"Número ID {numeroId} marcado como cancelado. Se liberará en la fecha de expiración: {numero.FechaExpiracion}");
                 return true;
             }
             catch (Exception ex)
@@ -554,7 +611,6 @@ namespace TelefonicaEmpresarial.Services
                 return false;
             }
         }
-
         public async Task<List<NumeroTelefonico>> ObtenerNumerosPorUsuario(string userId)
         {
             try

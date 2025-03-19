@@ -248,6 +248,20 @@ builder.Services.AddQuartz(q =>
         .ForJob(transaccionesMonitorJobKey)
         .WithIdentity("TransaccionesMonitor-Trigger")
         .WithCronSchedule("0 0/30 * * * ?")); // Ejecutar cada 30 minutos
+
+
+    var liberarNumerosJobKey = new JobKey("LiberarNumeros");
+    q.AddJob<LiberarNumerosJob>(opts => opts.WithIdentity(liberarNumerosJobKey));
+    q.AddTrigger(opts => opts
+        .ForJob(liberarNumerosJobKey)
+        .WithIdentity("LiberarNumeros-Trigger")
+        .WithCronSchedule("0 0 4 * * ?")); // Ejecutar a las 4 AM todos los días
+
+    // Agregar un trigger adicional para procesar en lotes durante el día
+    q.AddTrigger(opts => opts
+        .ForJob(liberarNumerosJobKey)
+        .WithIdentity("LiberarNumeros-Lotes-Trigger")
+        .WithCronSchedule("0 30 10,14,18,22 * * ?")); // 10:30 AM, 2:30 PM, 6:30 PM y 10:30 PM
 });
 
 builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
