@@ -23,51 +23,48 @@ namespace TelefonicaEmpresarial.Controllers
         }
 
         [HttpPost("sms")]
-        public async Task<IActionResult> RecibirSMS([FromForm] SMSPoolSMSEvento evento)
+        public async Task<IActionResult> RecibirSMS([FromBody] SMSPoolWebhookEvento evento)
         {
             try
             {
-                _logger.LogInformation($"Webhook de SMSPool recibido - OrderId: {evento.OrderId}, Mensaje: {(evento.Message?.Length > 20 ? evento.Message.Substring(0, 20) + "..." : evento.Message)}");
+                _logger.LogInformation($"Webhook de SMSPool recibido - OrderId: {evento.orderid}, Mensaje: {(evento.full_sms?.Length > 20 ? evento.full_sms.Substring(0, 20) + "..." : evento.full_sms)}");
 
-                // Verificar firma o token (implementación básica)
-                var apiKey = _configuration["SMSPool:ApiKey"];
-                if (string.IsNullOrEmpty(evento.Key) || evento.Key != apiKey)
-                {
-                    _logger.LogWarning("Webhook de SMSPool recibido con API key inválida");
-                    return Unauthorized("API key inválida");
-                }
+                // Ya no necesitamos verificar API key porque SMSPool no la envía en sus webhooks
+                // En su lugar, podrías implementar algún otro método de autenticación o usar HTTPS
 
                 // Buscar el número en nuestra base de datos
                 var numero = await _context.SMSPoolNumeros
-                    .FirstOrDefaultAsync(n => n.OrderId == evento.OrderId);
+                    .FirstOrDefaultAsync(n => n.OrderId == evento.orderid);
 
                 if (numero == null)
                 {
-                    _logger.LogWarning($"SMS recibido para OrderId desconocido: {evento.OrderId}");
+                    _logger.LogWarning($"SMS recibido para OrderId desconocido: {evento.orderid}");
                     return BadRequest("OrderId no encontrado");
                 }
 
                 // Verificar si el mensaje ya existe
                 var mensajeExistente = await _context.SMSPoolVerificaciones
-                    .AnyAsync(v => v.NumeroId == numero.Id && v.MensajeCompleto == evento.Message);
+                    .AnyAsync(v => v.NumeroId == numero.Id && v.MensajeCompleto == evento.full_sms);
 
                 if (mensajeExistente)
                 {
-                    _logger.LogInformation($"Mensaje duplicado para OrderId: {evento.OrderId}");
+                    _logger.LogInformation($"Mensaje duplicado para OrderId: {evento.orderid}");
                     return Ok("Mensaje duplicado");
                 }
 
-                // Extraer código de verificación
-                string codigo = await ExtraerCodigoVerificacion(evento.Message);
+                // Usar el código ya extraído por SMSPool o extraerlo nosotros mismos
+                string codigo = !string.IsNullOrEmpty(evento.sms)
+                    ? evento.sms
+                    : await ExtraerCodigoVerificacion(evento.full_sms);
 
                 // Guardar el SMS
                 var verificacion = new SMSPoolVerificacion
                 {
                     NumeroId = numero.Id,
                     FechaRecepcion = DateTime.UtcNow,
-                    MensajeCompleto = evento.Message,
+                    MensajeCompleto = evento.full_sms,
                     CodigoExtraido = codigo,
-                    Remitente = evento.Sender ?? "Desconocido"
+                    Remitente = "SMSPool Webhook" // SMSPool no proporciona remitente en el webhook
                 };
 
                 _context.SMSPoolVerificaciones.Add(verificacion);
@@ -79,7 +76,7 @@ namespace TelefonicaEmpresarial.Controllers
 
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation($"SMS guardado correctamente para OrderId: {evento.OrderId}");
+                _logger.LogInformation($"SMS guardado correctamente para OrderId: {evento.orderid}");
                 return Ok();
             }
             catch (Exception ex)
@@ -126,12 +123,12 @@ namespace TelefonicaEmpresarial.Controllers
         }
     }
 
-    // Clase para mapear eventos de SMSPool
-    public class SMSPoolSMSEvento
+    // Clase actualizada para mapear eventos de SMSPool según la documentación
+    public class SMSPoolWebhookEvento
     {
-        public string Key { get; set; }
-        public string OrderId { get; set; }
-        public string Message { get; set; }
-        public string Sender { get; set; }
+        public string orderid { get; set; }
+        public string sms { get; set; }
+        public string full_sms { get; set; }
+        public string timestamp { get; set; }
     }
 }
