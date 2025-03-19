@@ -80,6 +80,7 @@ builder.Services.AddHealthChecks()
     .AddUrlGroup(new Uri("https://api.twilio.com/"), "twilio-api")
     .AddUrlGroup(new Uri("https://status.stripe.com/"), "stripe-status")
     .AddUrlGroup(new Uri("https://pricing.twilio.com/v1/"), "twilio-precing-status")
+    .AddUrlGroup(new Uri("https://api.smspool.net/"), "smspool-status")
     .AddCheck<QuartzJobsHealthCheck>("quartz-jobs")
     .AddCheck<TransaccionesMonitorHealthCheck>("transacciones-monitor-job");
 
@@ -170,7 +171,15 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IAdminLogService, AdminLogService>();
 builder.Services.AddScoped<ITransaccionMonitorService, TransaccionMonitorService>();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+// Registrar servicio de SMSPool
+builder.Services.AddScoped<ISMSPoolService, SMSPoolService>();
 
+
+
+// Agregar configuración de SMSPool
+builder.Services.AddOptions<SMSPoolOptions>()
+    .Bind(builder.Configuration.GetSection("SMSPool"))
+    .ValidateDataAnnotations();
 
 
 
@@ -257,11 +266,21 @@ builder.Services.AddQuartz(q =>
         .WithIdentity("LiberarNumeros-Trigger")
         .WithCronSchedule("0 0 4 * * ?")); // Ejecutar a las 4 AM todos los días
 
+
     // Agregar un trigger adicional para procesar en lotes durante el día
     q.AddTrigger(opts => opts
         .ForJob(liberarNumerosJobKey)
         .WithIdentity("LiberarNumeros-Lotes-Trigger")
         .WithCronSchedule("0 30 10,14,18,22 * * ?")); // 10:30 AM, 2:30 PM, 6:30 PM y 10:30 PM
+
+    var smsPoolMonitorJobKey = new JobKey("SMSPoolMonitorJob");
+    q.AddJob<SMSPoolMonitorJob>(opts => opts.WithIdentity(smsPoolMonitorJobKey));
+    q.AddTrigger(opts => opts
+        .ForJob(smsPoolMonitorJobKey)
+        .WithIdentity("SMSPoolMonitor-Trigger")
+        .WithSimpleSchedule(x => x
+            .WithIntervalInSeconds(30)
+            .RepeatForever()));
 });
 
 builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);

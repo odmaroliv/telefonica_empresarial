@@ -1,0 +1,641 @@
+﻿@page "/verificaciones"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using System.Security.Claims
+@using TelefonicaEmpresaria.Models
+@using TelefonicaEmpresaria.Services.TelefonicaEmpresarial.Services
+@using TelefonicaEmpresarial.Services
+@attribute [Authorize]
+@inject UserManager<ApplicationUser> UserManager
+@inject ISMSPoolService SMSPoolService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ILogger<ServiciosVerificacion> Logger
+@inject ISaldoService SaldoService
+@inject INotificationService NotificationService
+
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-2 text-gray-800">Servicios de Verificación Temporal</h1>
+    <p class="text-gray-600 mb-8">Números para verificación de servicios que requieren validación más estricta</p>
+
+    @if (cargando)
+    {
+        <div class="flex justify-center py-8">
+            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+    }
+    else if (error != null)
+    {
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">
+            <strong class="font-bold">Error:</strong>
+            <span class="block sm:inline">@error</span>
+        </div>
+        <button @onclick="CargarServicios" class="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+            Intentar nuevamente
+        </button>
+    }
+    else
+    {
+        <!-- Sección informativa sobre verificaciones temporales -->
+        <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-8">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm text-blue-700">
+                        <span class="font-medium">¿Por qué usar números temporales?</span> A diferencia de los números telefónicos virtuales regulares, estos números son especiales para plataformas con verificación estricta que rechazan números virtuales normales. Ideales para WhatsApp Business, Instagram Business, Facebook Messenger y otras aplicaciones que requieren validación por SMS.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sección de mis verificaciones activas -->
+        @if (numerosActivos.Any())
+        {
+            <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+                <h2 class="text-xl font-semibold mb-4 text-gray-800">Mis Verificaciones Activas</h2>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Servicio</th>
+                                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Número</th>
+                                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tiempo Restante</th>
+                                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Código</th>
+                                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            @foreach (var numero in numerosActivos)
+                            {
+                                <tr>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <div class="flex items-center">
+                                            <div class="h-8 w-8 mr-2 bg-gray-200 rounded-md flex items-center justify-center text-gray-600 overflow-hidden">
+                                                @if (!string.IsNullOrEmpty(numero.Servicio?.IconoUrl) && System.IO.File.Exists($"wwwroot{numero.Servicio.IconoUrl}"))
+                                                {
+                                                    <img class="h-8 w-8" src="@numero.Servicio.IconoUrl" alt="@numero.Servicio.Nombre">
+                                                }
+                                                else
+                                                {
+                                                    @(numero.Servicio?.Nombre.Length > 0 ? numero.Servicio?.Nombre.Substring(0, 1) : "")
+                                                }
+                                            </div>
+                                            <div class="text-sm font-medium text-gray-900">@numero.Servicio?.Nombre</div>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <div class="text-sm text-gray-900">@numero.Numero</div>
+                                        <div class="text-xs text-gray-500">@numero.Pais</div>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        @if (numero.SMSRecibido)
+                                        {
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                                SMS Recibido
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                                Esperando SMS
+                                            </span>
+                                        }
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        @CalcularTiempoRestante(numero.FechaExpiracion)
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        @if (numero.SMSRecibido && !string.IsNullOrEmpty(numero.CodigoRecibido))
+                                        {
+                                            <div class="flex items-center">
+                                                <span class="text-sm font-medium bg-gray-100 px-2 py-1 rounded mr-2">@numero.CodigoRecibido</span>
+                                                <button @onclick="() => CopiarCodigo(numero.CodigoRecibido)" class="text-blue-600 hover:text-blue-800">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-sm text-gray-500">Pendiente</span>
+                                        }
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm font-medium">
+                                        <div class="flex space-x-2">
+                                            <button @onclick="() => VerificarSMS(numero.Id)" class="text-indigo-600 hover:text-indigo-900">
+                                                Verificar
+                                            </button>
+                                            <button @onclick="() => VerDetalles(numero.Id)" class="text-blue-600 hover:text-blue-900">
+                                                Detalles
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+        
+        <!-- Buscador de servicios -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <div class="flex flex-col md:flex-row md:items-center justify-between mb-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4 md:mb-0">Servicios Disponibles</h2>
+
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <!-- Selector de países global para todos los servicios -->
+                    <div class="relative w-full sm:w-64">
+                        <select @bind="paisSeleccionado" @bind:event="onchange" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                            @foreach (var pais in paisesDisponibles)
+                            {
+                                <option value="@pais.Key">@pais.Value</option>
+                            }
+                        </select>
+                    </div>
+                    
+                    <!-- Buscador de servicios -->
+                    <div class="relative w-full sm:w-64">
+                        <input type="text"
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                               placeholder="Buscar servicio..."
+                               @bind="filtroTexto"
+                               @bind:event="oninput"
+                               @onkeyup="FiltrarServicios" />
+                        <span class="absolute right-3 top-2.5 text-gray-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </span>
+                    </div>
+
+                    <!-- Selector de página -->
+                    <select @bind="paginaActual" @bind:event="onchange" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                        @for (int i = 1; i <= TotalPaginas; i++)
+                        {
+                            <option value="@i">Página @i de @TotalPaginas</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <!-- Indicador del total de servicios -->
+            <p class="text-sm text-gray-500 mb-4">
+                Mostrando @serviciosFiltrados.Count() de @totalServicios servicios disponibles (país seleccionado: @ObtenerNombrePais(paisSeleccionado))
+            </p>
+
+            <!-- Listado de servicios disponibles con paginación -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                @foreach (var servicio in serviciosFiltradosPaginados)
+                {
+                    <div class="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                        <div class="p-4 bg-gray-50 flex items-center border-b">
+                            <div class="h-10 w-10 mr-3 bg-gray-200 rounded-md flex items-center justify-center text-gray-600 overflow-hidden">
+                                @if (!string.IsNullOrEmpty(servicio.IconoUrl) && System.IO.File.Exists($"wwwroot{servicio.IconoUrl}"))
+                                {
+                                    <img class="h-10 w-10" src="@servicio.IconoUrl" alt="@servicio.Nombre">
+                                }
+                                else
+                                {
+                                    @(servicio.Nombre.Length > 0 ? servicio.Nombre.Substring(0, 1) : "")
+                                }
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-lg">@servicio.Nombre</h3>
+                                <p class="text-sm text-gray-600">Verificación temporal</p>
+                            </div>
+                        </div>
+                        <div class="p-4">
+                            <p class="text-sm text-gray-700 mb-4">@servicio.Descripcion</p>
+
+                            <div class="mb-4">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-sm text-gray-600">Tasa de éxito</span>
+                                    <span class="text-sm font-medium">@servicio.TasaExito%</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2">
+                                    <div class="bg-green-500 h-2 rounded-full" style="width: @servicio.TasaExito%"></div>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-between items-center mb-4">
+                                <div>
+                                    <span class="block text-lg font-bold text-blue-600">$@servicio.PrecioVenta.ToString("0.00")</span>
+                                    <span class="text-xs text-gray-500">Validez: 20 min.</span>
+                                </div>
+                                <div>
+                                    <span class="text-xs text-gray-500">Países disponibles:</span>
+                                    <div class="flex mt-1">
+                                        @foreach (var pais in servicio.PaisesDisponibles?.Split(',') ?? new[] { "US" })
+                                        {
+                                            <span class="text-xs bg-gray-100 px-1 rounded mr-1">@pais</span>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button @onclick="() => ComprarVerificacion(servicio.Id)" class="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                                Comprar Verificación
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <!-- Paginación -->
+            <div class="flex justify-between items-center mt-8">
+                <button @onclick="PaginaAnterior"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                        disabled="@(paginaActual <= 1)">
+                    Anterior
+                </button>
+
+                <span class="text-sm text-gray-700">
+                    Página @paginaActual de @TotalPaginas
+                </span>
+
+                <button @onclick="PaginaSiguiente"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                        disabled="@(paginaActual >= TotalPaginas)">
+                    Siguiente
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private ApplicationUser? user;
+    private List<SMSPoolServicio> servicios = new List<SMSPoolServicio>();
+    private List<SMSPoolNumero> numerosActivos = new List<SMSPoolNumero>();
+    private bool cargando = true;
+    private string? error;
+    private decimal saldoUsuario;
+
+    // Variables para paginación y filtrado
+    private string filtroTexto = "";
+    private int paginaActual = 1;
+    private const int elementosPorPagina = 9; // 3x3 grid
+    private int totalServicios = 0;
+    private List<KeyValuePair<string, string>> paisesDisponibles = new List<KeyValuePair<string, string>>();
+    private string paisSeleccionado = "US";
+
+    private IEnumerable<SMSPoolServicio> serviciosFiltrados => servicios
+        .Where(s => string.IsNullOrEmpty(filtroTexto) ||
+            s.Nombre.Contains(filtroTexto, StringComparison.OrdinalIgnoreCase) ||
+            (s.Descripcion != null && s.Descripcion.Contains(filtroTexto, StringComparison.OrdinalIgnoreCase)));
+
+    private IEnumerable<SMSPoolServicio> serviciosFiltradosPaginados => serviciosFiltrados
+        .Skip((paginaActual - 1) * elementosPorPagina)
+        .Take(elementosPorPagina);
+
+    private int TotalPaginas => (int)Math.Ceiling(serviciosFiltrados.Count() / (double)elementosPorPagina);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        try
+        {
+            cargando = true;
+            error = null;
+
+            // Obtener usuario actual
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            user = await UserManager.GetUserAsync(authState.User);
+
+            if (user == null)
+            {
+                error = "No se pudo obtener información del usuario";
+                return;
+            }
+
+            // Cargar saldo
+            saldoUsuario = await SaldoService.ObtenerSaldoUsuario(user.Id);
+
+            // Cargar países disponibles (general, no específico por servicio)
+            await CargarPaisesGenerales();
+
+            // Cargar servicios disponibles
+            await CargarServicios();
+
+            // Cargar números activos del usuario
+            await CargarNumerosActivos();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar datos iniciales");
+            error = "Ocurrió un error al cargar la información. Por favor, intente nuevamente.";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    // Método para cargar una lista general de países
+    private async Task CargarPaisesGenerales()
+    {
+        try
+        {
+            // Usar una lista predefinida de países comunes para comenzar
+            paisesDisponibles = new List<KeyValuePair<string, string>>
+            {
+                new KeyValuePair<string, string>("US", "Estados Unidos"),
+                new KeyValuePair<string, string>("GB", "Reino Unido"),
+                new KeyValuePair<string, string>("CA", "Canadá"),
+                new KeyValuePair<string, string>("AU", "Australia"),
+                new KeyValuePair<string, string>("DE", "Alemania"),
+                new KeyValuePair<string, string>("ES", "España"),
+                new KeyValuePair<string, string>("FR", "Francia"),
+                new KeyValuePair<string, string>("IT", "Italia"),
+                new KeyValuePair<string, string>("BR", "Brasil"),
+                new KeyValuePair<string, string>("MX", "México")
+            };
+
+            paisSeleccionado = "US"; // Valor predeterminado
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar la lista general de países");
+            // Proporcionar al menos algunos países por defecto
+            paisesDisponibles = new List<KeyValuePair<string, string>>
+            {
+                new KeyValuePair<string, string>("US", "Estados Unidos"),
+                new KeyValuePair<string, string>("GB", "Reino Unido")
+            };
+        }
+    }
+
+    private async Task CargarServicios()
+    {
+        try
+        {
+            servicios = await SMSPoolService.ObtenerServiciosDisponibles();
+            if (!servicios.Any())
+            {
+                // Si no hay servicios, intentar actualizarlos
+                await SMSPoolService.ActualizarServiciosDisponibles();
+                servicios = await SMSPoolService.ObtenerServiciosDisponibles();
+            }
+
+            // Guardar el total para mostrar en la interfaz
+            totalServicios = servicios.Count;
+
+            // Ordenar por nombre para mejor usabilidad
+            servicios = servicios.OrderBy(s => s.Nombre).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar servicios");
+            error = "No se pudieron cargar los servicios disponibles.";
+        }
+    }
+
+    private async Task CargarNumerosActivos()
+    {
+        if (user == null) return;
+
+        try
+        {
+            var todosNumeros = await SMSPoolService.ObtenerNumerosPorUsuario(user.Id);
+            numerosActivos = todosNumeros.Where(n => n.Estado == "Activo").ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar números activos");
+            // No mostrar error para no interrumpir la carga de la página
+        }
+    }
+
+    // Métodos para paginación y filtrado
+    private void FiltrarServicios()
+    {
+        // Reiniciar a la página 1 cuando se filtra
+        paginaActual = 1;
+        StateHasChanged();
+    }
+
+    private void PaginaAnterior()
+    {
+        if (paginaActual > 1)
+        {
+            paginaActual--;
+            StateHasChanged();
+        }
+    }
+
+    private void PaginaSiguiente()
+    {
+        if (paginaActual < TotalPaginas)
+        {
+            paginaActual++;
+            StateHasChanged();
+        }
+    }
+
+    // Obtener el nombre de un país a partir de su código
+    private string ObtenerNombrePais(string codigoPais)
+    {
+        var pais = paisesDisponibles.FirstOrDefault(p => p.Key == codigoPais);
+        return pais.Value ?? codigoPais;
+    }
+
+    private async Task ComprarVerificacion(int servicioId)
+    {
+        if (user == null) return;
+
+        try
+        {
+            // Mostrar indicador de carga
+            await JSRuntime.InvokeVoidAsync("eval", "document.body.style.cursor = 'wait'");
+
+            // Obtener el servicio seleccionado
+            var servicio = await SMSPoolService.ObtenerServicioPorId(servicioId);
+            if (servicio == null)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Servicio no encontrado");
+                return;
+            }
+
+            // Verificar saldo suficiente
+            if (saldoUsuario < servicio.PrecioVenta)
+            {
+                bool confirmarRecarga = await JSRuntime.InvokeAsync<bool>("confirm",
+                    $"Saldo insuficiente. Se requieren ${servicio.PrecioVenta} MXN y su saldo actual es ${saldoUsuario} MXN. ¿Desea ir a la página de recarga?");
+
+                if (confirmarRecarga)
+                {
+                    NavigationManager.NavigateTo("/saldo");
+                }
+                return;
+            }
+
+            // Verificar si el servicio está disponible para el país seleccionado
+            var paisesServicio = await SMSPoolService.ObtenerPaisesDisponibles(servicioId);
+
+            // Comprobar si el país seleccionado está disponible para este servicio
+            if (!paisesServicio.Any(p => p.Key == paisSeleccionado))
+            {
+                // El país seleccionado no está disponible para este servicio
+                string paisesDisponiblesStr = string.Join(", ", paisesServicio.Select(p => p.Value));
+
+                await JSRuntime.InvokeVoidAsync("alert",
+                    $"El servicio {servicio.Nombre} no está disponible para el país seleccionado ({ObtenerNombrePais(paisSeleccionado)}). " +
+                    $"Países disponibles para este servicio: {paisesDisponiblesStr}");
+
+                return;
+            }
+
+            // Mostrar confirmación al usuario
+            bool confirmarCompra = await JSRuntime.InvokeAsync<bool>("confirm",
+                $"¿Confirma la compra de un número para {servicio.Nombre} en {ObtenerNombrePais(paisSeleccionado)} por ${servicio.PrecioVenta} MXN?");
+
+            if (!confirmarCompra)
+            {
+                return;
+            }
+
+            try
+            {
+                // Realizar la compra con el país validado
+                var (numero, errorCompra) = await SMSPoolService.ComprarNumeroTemporal(user.Id, servicioId, paisSeleccionado);
+
+                if (numero == null)
+                {
+                    // Si el error contiene información sobre pools, mostrarla de forma más amigable
+                    if (errorCompra.Contains("Pool"))
+                    {
+                        errorCompra = "Aunque el país está listado como disponible, el servicio actualmente no tiene números disponibles " +
+                                      "en ese país o se requiere asistencia. Por favor, intente con otro país o contacte al soporte.";
+                    }
+
+                    await JSRuntime.InvokeVoidAsync("alert", $"Error al comprar verificación: {errorCompra}");
+                    return;
+                }
+
+                // Actualizar saldo y números activos
+                saldoUsuario = await SaldoService.ObtenerSaldoUsuario(user.Id);
+                await CargarNumerosActivos();
+
+                // Mostrar mensaje de éxito
+                await JSRuntime.InvokeVoidAsync("alert", $"¡Número adquirido exitosamente! Se le redirigirá a la página de detalles donde podrá ver su código cuando llegue.");
+
+                // Redirigir a la página de detalles
+                NavigationManager.NavigateTo($"/verificaciones/detalle/{numero.Id}");
+            }
+            catch (Exception ex)
+            {
+                string mensaje = "Error al procesar la compra.";
+                if (ex.Message.Contains("Pool"))
+                {
+                    mensaje = "Aunque el país está listado como disponible, actualmente no hay números disponibles " +
+                              "en ese país o se requiere asistencia. Por favor, intente con otro país o contacte al soporte.";
+                }
+                else if (ex.InnerException != null)
+                {
+                    mensaje += " " + ex.InnerException.Message;
+                }
+                else
+                {
+                    mensaje += " " + ex.Message;
+                }
+
+                await JSRuntime.InvokeVoidAsync("alert", mensaje);
+                Logger.LogError(ex, $"Error al comprar verificación para servicio {servicioId}, país {paisSeleccionado}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error al comprar verificación para servicio {servicioId}");
+            await JSRuntime.InvokeVoidAsync("alert", "Ocurrió un error al procesar la compra. Por favor, intente nuevamente.");
+        }
+        finally
+        {
+            // Restaurar el cursor
+            await JSRuntime.InvokeVoidAsync("eval", "document.body.style.cursor = 'default'");
+        }
+    }
+
+    private async Task VerificarSMS(int numeroId)
+    {
+        try
+        {
+            bool hayMensaje = await SMSPoolService.VerificarNuevosMensajes(numeroId);
+            if (hayMensaje)
+            {
+                // Actualizar la lista de números activos
+                await CargarNumerosActivos();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Aún no se ha recibido ningún SMS. Por favor, espere unos momentos e intente nuevamente.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error al verificar SMS para número {numeroId}");
+            await JSRuntime.InvokeVoidAsync("alert", "No se pudo verificar la recepción de SMS. Por favor, intente nuevamente.");
+        }
+    }
+
+    private void VerDetalles(int numeroId)
+    {
+        NavigationManager.NavigateTo($"/verificaciones/detalle/{numeroId}");
+    }
+
+    private async Task CopiarCodigo(string codigo)
+    {
+        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", codigo);
+    }
+
+    private string CalcularTiempoRestante(DateTime fechaExpiracion)
+    {
+        var tiempoRestante = fechaExpiracion - DateTime.UtcNow;
+
+        if (tiempoRestante.TotalSeconds <= 0)
+        {
+            return "Expirado";
+        }
+
+        if (tiempoRestante.TotalMinutes < 1)
+        {
+            return $"{tiempoRestante.Seconds} seg";
+        }
+
+        return $"{(int)tiempoRestante.TotalMinutes} min";
+    }
+
+    // Este método cargaría los países específicos para un servicio en particular
+    private async Task CargarPaisesDisponiblesParaServicio(int servicioId)
+    {
+        try
+        {
+            var paisesServicio = await SMSPoolService.ObtenerPaisesDisponibles(servicioId);
+            if (paisesServicio.Any())
+            {
+                paisesDisponibles = paisesServicio;
+                paisSeleccionado = paisesDisponibles.First().Key;
+                StateHasChanged();
+            }
+            // Si no hay países específicos, mantener la lista general
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error al cargar países disponibles para servicio {servicioId}");
+            // Mantener la lista general de países
+        }
+    }
+    [Inject]
+    private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
+}

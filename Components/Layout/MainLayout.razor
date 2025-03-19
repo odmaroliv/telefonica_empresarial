@@ -72,6 +72,13 @@
                                     </svg>
                                     Mi Saldo
                                 </NavLink>
+                                <NavLink href="/verificaciones" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v-2l2.257-2.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z" clip-rule="evenodd" />
+                                    </svg>
+                                    Verificaciones
+                                </NavLink>
+
                               
                                 <AuthorizeView Roles="Admin" Context="adminContext">
                                     <div>
@@ -105,6 +112,18 @@
                                                     </svg>
                                                     Usuarios
                                                 </NavLink>
+                                                <!-- Agregar después del enlace "Mi Saldo" en el menú de navegación de MainLayout.razor -->
+
+                                              
+                                                
+                                                    <NavLink href="/admin/verificaciones" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                                                            <path fill-rule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v-2l2.257-2.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z" clip-rule="evenodd" />
+                                                        </svg>
+                                                        Verificaciones SMS
+                                                    </NavLink>
+
+                                                 
 
                                                 <NavLink href="/admin/numeros" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
                                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">

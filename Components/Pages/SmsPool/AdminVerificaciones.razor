@@ -1,0 +1,790 @@
+﻿@page "/admin/verificaciones"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using System.Security.Claims
+@using TelefonicaEmpresaria.Models
+@using TelefonicaEmpresarial.Services
+@attribute [Authorize(Roles = "Admin")]
+@inject UserManager<ApplicationUser> UserManager
+@inject ISMSPoolService SMSPoolService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ILogger<AdminVerificaciones> Logger
+
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-2 text-gray-800">Administración de Verificaciones SMSPool</h1>
+    <p class="text-gray-600 mb-8">Gestión de servicios de verificación temporal</p>
+
+    @if (cargando)
+    {
+        <div class="flex justify-center py-8">
+            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+    }
+    else if (error != null)
+    {
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">
+            <strong class="font-bold">Error:</strong>
+            <span class="block sm:inline">@error</span>
+        </div>
+        <button @onclick="CargarDatos" class="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+            Intentar nuevamente
+        </button>
+    }
+    else
+    {
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Panel izquierdo: Configuración y estadísticas -->
+            <div class="col-span-1">
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-800">Configuración</h2>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">API Key SMSPool</label>
+                            <div class="flex">
+                                <input type="password"
+                                       value="@(apiKey)"
+                                       @onchange="(e) => apiKey = e.Value?.ToString() ?? string.Empty"
+                                       class="flex-1 px-3 py-2 border border-gray-300 rounded-l-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                                <button @onclick="GuardarApiKey"
+                                        class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-r-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                                    Guardar
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Cambio USD a MXN</label>
+                            <div class="flex">
+                                <input type="number"
+                                       step="0.01"
+                                       value="@tipoCambio"
+                                       @onchange="(e) => tipoCambio = Convert.ToDecimal(e.Value)"
+                                       class="flex-1 px-3 py-2 border border-gray-300 rounded-l-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                                <button @onclick="GuardarTipoCambio"
+                                        class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-r-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                                    Guardar
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Margen de Ganancia (%)</label>
+                            <div class="flex">
+                                <input type="number"
+                                       step="10"
+                                       value="@(margenGanancia * 100)"
+                                       @onchange="(e) => margenGanancia = Convert.ToDecimal(e.Value) / 100m"
+                                       class="flex-1 px-3 py-2 border border-gray-300 rounded-l-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                                <button @onclick="GuardarMargenGanancia"
+                                        class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-r-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                                    Guardar
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Porcentaje de margen de ganancia (sobre el costo)</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 space-y-3">
+                        <button @onclick="ActualizarServicios" class="w-full px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">
+                            Actualizar Servicios Disponibles
+                        </button>
+
+                        <button @onclick="RecalcularPrecios" class="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                            Recalcular Precios
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-800">Estadísticas</h2>
+
+                    <div class="space-y-4">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Total servicios:</span>
+                            <span class="font-semibold">@totalServicios</span>
+                        </div>
+
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Servicios activos:</span>
+                            <span class="font-semibold">@servicios.Count(s => s.Activo)</span>
+                        </div>
+
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Verificaciones activas:</span>
+                            <span class="font-semibold">@estadisticas.NumVerificacionesActivas</span>
+                        </div>
+
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Verificaciones totales:</span>
+                            <span class="font-semibold">@estadisticas.NumVerificacionesTotales</span>
+                        </div>
+
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Ingresos totales:</span>
+                            <span class="font-semibold">$@estadisticas.IngresoTotal.ToString("0.00") MXN</span>
+                        </div>
+
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Costo total:</span>
+                            <span class="font-semibold">$@estadisticas.CostoTotal.ToString("0.00") MXN</span>
+                        </div>
+
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Ganancia total:</span>
+                            <span class="font-semibold text-green-600">$@((estadisticas.IngresoTotal - estadisticas.CostoTotal).ToString("0.00")) MXN</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel derecho: Listado de servicios -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <div class="flex flex-col md:flex-row justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-gray-800 mb-4 md:mb-0">Servicios Disponibles</h2>
+                        
+                        <div class="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+                            <!-- Buscador de servicios -->
+                            <div class="relative w-full md:w-64">
+                                <input type="text"
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                                       placeholder="Buscar servicio..."
+                                       @bind="filtroTexto"
+                                       @bind:event="oninput"
+                                       @onkeyup="FiltrarServicios" />
+                                <span class="absolute right-3 top-2.5 text-gray-400">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                    </svg>
+                                </span>
+                            </div>
+                            
+                            <!-- Filtro de estado -->
+                            <select @bind="filtroEstado" @bind:event="onchange" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                <option value="todos">Todos</option>
+                                <option value="activos">Solo Activos</option>
+                                <option value="inactivos">Solo Inactivos</option>
+                            </select>
+                            
+                            <button @onclick="MostrarModalNuevoServicio" class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">
+                                Agregar Servicio
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Indicador del total de servicios -->
+                    <p class="text-sm text-gray-500 mb-4">
+                        Mostrando @serviciosFiltrados.Count() de @totalServicios servicios disponibles (Página @paginaActual de @TotalPaginas)
+                    </p>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Servicio</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Service ID</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Costo Base (USD)</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Precio Venta (MXN)</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                @foreach (var servicio in serviciosFiltradosPaginados)
+                                {
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <div class="flex items-center">
+                                                <div class="h-8 w-8 mr-2 bg-gray-200 rounded-md flex items-center justify-center text-gray-600 overflow-hidden">
+                                                    @if (!string.IsNullOrEmpty(servicio.IconoUrl) && System.IO.File.Exists($"wwwroot{servicio.IconoUrl}"))
+                                                    {
+                                                        <img class="h-8 w-8" src="@servicio.IconoUrl" alt="@servicio.Nombre">
+                                                    }
+                                                    else
+                                                    {
+                                                        @(servicio.Nombre.Length > 0 ? servicio.Nombre.Substring(0, 1) : "")
+                                                    }
+                                                </div>
+                                                <div class="text-sm font-medium text-gray-900">@servicio.Nombre</div>
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            @servicio.ServiceId
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            $@servicio.CostoBase.ToString("0.00")
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            $@servicio.PrecioVenta.ToString("0.00")
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            @if (servicio.Activo)
+                                            {
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                                    Activo
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                                    Inactivo
+                                                </span>
+                                            }
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                            <div class="flex space-x-2">
+                                                <button @onclick="() => EditarServicio(servicio)" class="text-blue-600 hover:text-blue-900">
+                                                    Editar
+                                                </button>
+                                                <button @onclick="() => CambiarEstadoServicio(servicio)" class="text-purple-600 hover:text-purple-900">
+                                                    @(servicio.Activo ? "Desactivar" : "Activar")
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Paginación -->
+                    <div class="flex justify-between items-center mt-4">
+                        <button @onclick="PaginaAnterior"
+                                class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                                disabled="@(paginaActual <= 1)">
+                            Anterior
+                        </button>
+
+                        <span class="text-sm text-gray-700">
+                            Página @paginaActual de @TotalPaginas
+                        </span>
+
+                        <button @onclick="PaginaSiguiente"
+                                class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                                disabled="@(paginaActual >= TotalPaginas)">
+                            Siguiente
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-800">Últimas Verificaciones</h2>
+
+                    @if (ultimasVerificaciones.Any())
+                    {
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuario</th>
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Servicio</th>
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Número</th>
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monto</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    @foreach (var verificacion in ultimasVerificaciones)
+                                    {
+                                        <tr>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                @verificacion.Usuario?.Email
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap">
+                                                <div class="flex items-center">
+                                                    <div class="h-6 w-6 mr-2 bg-gray-200 rounded-md flex items-center justify-center text-gray-600 overflow-hidden">
+                                                        @if (!string.IsNullOrEmpty(verificacion.Servicio?.IconoUrl) && System.IO.File.Exists($"wwwroot{verificacion.Servicio.IconoUrl}"))
+                                                        {
+                                                            <img class="h-6 w-6" src="@verificacion.Servicio.IconoUrl" alt="@verificacion.Servicio.Nombre">
+                                                        }
+                                                        else
+                                                        {
+                                                            @(verificacion.Servicio?.Nombre.Length > 0 ? verificacion.Servicio?.Nombre.Substring(0, 1) : "")
+                                                        }
+                                                    </div>
+                                                    <div class="text-sm font-medium text-gray-900">@verificacion.Servicio?.Nombre</div>
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                @verificacion.Numero
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                @verificacion.FechaCompra.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap">
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full @(verificacion.Estado == "Activo" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800")">
+                                                    @verificacion.Estado
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                $@verificacion.CostoPagado.ToString("0.00") MXN
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center py-8 text-gray-500">
+                            <p>No hay verificaciones recientes</p>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (mostrarModalServicio)
+    {
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg overflow-hidden shadow-xl max-w-lg w-full mx-4">
+                <div class="p-6">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">@(servicioEdicion.Id > 0 ? "Editar" : "Nuevo") Servicio</h3>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+                            <input type="text" @bind="servicioEdicion.Nombre" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Service ID</label>
+                            <input type="text" @bind="servicioEdicion.ServiceId" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                            <textarea @bind="servicioEdicion.Descripcion" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"></textarea>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">URL del Icono</label>
+                            <input type="text" @bind="servicioEdicion.IconoUrl" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Costo Base (USD)</label>
+                            <input type="number" step="0.01" @bind="servicioEdicion.CostoBase" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Precio de Venta (MXN)</label>
+                            <input type="number" step="0.01" @bind="servicioEdicion.PrecioVenta" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Países Disponibles (separados por coma)</label>
+                            <input type="text" @bind="servicioEdicion.PaisesDisponibles" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="US,GB,CA" />
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Tasa de Éxito (%)</label>
+                            <input type="number" step="1" min="1" max="100" @bind="servicioEdicion.TasaExito" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Tiempo Estimado (minutos)</label>
+                            <input type="number" @bind="servicioEdicion.TiempoEstimadoMinutos" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                        </div>
+
+                        <div class="flex items-center">
+                            <input id="servicio-activo" type="checkbox" @bind="servicioEdicion.Activo" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
+                            <label for="servicio-activo" class="ml-2 block text-sm text-gray-700">Activo</label>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 flex justify-end space-x-3">
+                        <button @onclick="CerrarModalServicio" class="px-4 py-2 bg-gray-200 text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">
+                            Cancelar
+                        </button>
+                        <button @onclick="GuardarServicio" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                            Guardar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool cargando = true;
+    private string? error;
+    private List<SMSPoolServicio> servicios = new List<SMSPoolServicio>();
+    private List<SMSPoolNumero> ultimasVerificaciones = new List<SMSPoolNumero>();
+
+    // Configuración
+    private string apiKey = "";
+    private decimal tipoCambio = 20.0m;
+    private decimal margenGanancia = 1.0m;
+
+    // Modal para edición/creación de servicios
+    private bool mostrarModalServicio = false;
+    private SMSPoolServicio servicioEdicion = new SMSPoolServicio();
+
+    // Estadísticas
+    private SMSPoolService.AdminEstadisticasSMSPool estadisticas = new SMSPoolService.AdminEstadisticasSMSPool();
+    
+    // Variables para paginación y filtrado
+    private string filtroTexto = "";
+    private string filtroEstado = "todos";
+    private int paginaActual = 1;
+    private const int elementosPorPagina = 10;
+    private int totalServicios = 0;
+    
+    private IEnumerable<SMSPoolServicio> serviciosFiltrados => servicios
+        .Where(s => (filtroEstado == "todos" || 
+                    (filtroEstado == "activos" && s.Activo) ||
+                    (filtroEstado == "inactivos" && !s.Activo)) &&
+                    (string.IsNullOrEmpty(filtroTexto) || 
+                     s.Nombre.Contains(filtroTexto, StringComparison.OrdinalIgnoreCase) ||
+                     s.ServiceId.Contains(filtroTexto, StringComparison.OrdinalIgnoreCase) ||
+                     (s.Descripcion != null && s.Descripcion.Contains(filtroTexto, StringComparison.OrdinalIgnoreCase))));
+            
+    private IEnumerable<SMSPoolServicio> serviciosFiltradosPaginados => serviciosFiltrados
+        .OrderBy(s => s.Nombre)
+        .Skip((paginaActual - 1) * elementosPorPagina)
+        .Take(elementosPorPagina);
+    
+    private int TotalPaginas => (int)Math.Ceiling(serviciosFiltrados.Count() / (double)elementosPorPagina);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        try
+        {
+            cargando = true;
+            error = null;
+
+            // Cargar configuración
+            apiKey = await SMSPoolService.ObtenerValorConfiguracion("SMSPoolApiKey", "");
+
+            string tipoCambioStr = await SMSPoolService.ObtenerValorConfiguracion("TipoCambioUSD", "20.0");
+            tipoCambio = decimal.Parse(tipoCambioStr);
+
+            string margenStr = await SMSPoolService.ObtenerValorConfiguracion("MargenGananciaSMSPool", "1.0");
+            margenGanancia = decimal.Parse(margenStr);
+
+            // Cargar servicios
+            servicios = await SMSPoolService.ObtenerServiciosDisponibles();
+            totalServicios = servicios.Count;
+
+            // Cargar últimas verificaciones
+            ultimasVerificaciones = await SMSPoolService.ObtenerUltimasVerificacionesAdmin();
+
+            // Cargar estadísticas
+            //estadisticas = await SMSPoolService.ObtenerEstadisticasAdmin();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar datos de administración SMSPool");
+            error = "Ocurrió un error al cargar la información. Por favor, intente nuevamente.";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    // Métodos para paginación y filtrado
+    private void FiltrarServicios()
+    {
+        // Reiniciar a la página 1 cuando se filtra
+        paginaActual = 1;
+        StateHasChanged();
+    }
+
+    private void PaginaAnterior()
+    {
+        if (paginaActual > 1)
+        {
+            paginaActual--;
+            StateHasChanged();
+        }
+    }
+
+    private void PaginaSiguiente()
+    {
+        if (paginaActual < TotalPaginas)
+        {
+            paginaActual++;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GuardarApiKey()
+    {
+        try
+        {
+            await SMSPoolService.ActualizarConfiguracion(
+                "SMSPoolApiKey",
+                apiKey,
+                "API Key para acceder a SMSPool");
+
+            await JSRuntime.InvokeVoidAsync("alert", "API Key guardada correctamente");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al guardar API Key");
+            await JSRuntime.InvokeVoidAsync("alert", "Error al guardar API Key");
+        }
+    }
+
+    private async Task GuardarTipoCambio()
+    {
+        try
+        {
+            if (tipoCambio <= 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El tipo de cambio debe ser mayor a cero");
+                return;
+            }
+
+            await SMSPoolService.ActualizarConfiguracion(
+                "TipoCambioUSD",
+                tipoCambio.ToString(),
+                "Tipo de cambio USD a MXN");
+
+            await JSRuntime.InvokeVoidAsync("alert", "Tipo de cambio guardado correctamente");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al guardar tipo de cambio");
+            await JSRuntime.InvokeVoidAsync("alert", "Error al guardar tipo de cambio");
+        }
+    }
+
+    private async Task GuardarMargenGanancia()
+    {
+        try
+        {
+            if (margenGanancia < 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El margen de ganancia debe ser mayor o igual a cero");
+                return;
+            }
+
+            await SMSPoolService.ActualizarConfiguracion(
+                "MargenGananciaSMSPool",
+                margenGanancia.ToString(),
+                "Margen de ganancia para servicios SMSPool (1.0 = 100%)");
+
+            await JSRuntime.InvokeVoidAsync("alert", "Margen de ganancia guardado correctamente");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al guardar margen de ganancia");
+            await JSRuntime.InvokeVoidAsync("alert", "Error al guardar margen de ganancia");
+        }
+    }
+
+    private async Task ActualizarServicios()
+    {
+        try
+        {
+            cargando = true;
+
+            bool resultado = await SMSPoolService.ActualizarServiciosDisponibles();
+
+            if (resultado)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Servicios actualizados correctamente");
+                await CargarDatos();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudieron actualizar los servicios");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al actualizar servicios");
+            await JSRuntime.InvokeVoidAsync("alert", "Error al actualizar servicios: " + ex.Message);
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task RecalcularPrecios()
+    {
+        try
+        {
+            cargando = true;
+
+            bool resultado = await SMSPoolService.RecalcularPreciosServicios();
+
+            if (resultado)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Precios recalculados correctamente");
+                await CargarDatos();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudieron recalcular los precios");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al recalcular precios");
+            await JSRuntime.InvokeVoidAsync("alert", "Error al recalcular precios: " + ex.Message);
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private void MostrarModalNuevoServicio()
+    {
+        servicioEdicion = new SMSPoolServicio
+            {
+                Activo = true,
+                TasaExito = 95,
+                TiempoEstimadoMinutos = 20,
+                PaisesDisponibles = "US,GB,CA",
+                UltimaActualizacion = DateTime.UtcNow
+            };
+
+        mostrarModalServicio = true;
+    }
+
+    private void EditarServicio(SMSPoolServicio servicio)
+    {
+        // Clonar servicio para no afectar el original hasta guardar
+        servicioEdicion = new SMSPoolServicio
+            {
+                Id = servicio.Id,
+                ServiceId = servicio.ServiceId,
+                Nombre = servicio.Nombre,
+                Descripcion = servicio.Descripcion,
+                IconoUrl = servicio.IconoUrl,
+                Activo = servicio.Activo,
+                CostoBase = servicio.CostoBase,
+                PrecioVenta = servicio.PrecioVenta,
+                TiempoEstimadoMinutos = servicio.TiempoEstimadoMinutos,
+                PaisesDisponibles = servicio.PaisesDisponibles,
+                TasaExito = servicio.TasaExito,
+                UltimaActualizacion = servicio.UltimaActualizacion
+            };
+
+        mostrarModalServicio = true;
+    }
+
+    private void CerrarModalServicio()
+    {
+        mostrarModalServicio = false;
+    }
+
+    private async Task GuardarServicio()
+    {
+        try
+        {
+            // Validaciones básicas
+            if (string.IsNullOrWhiteSpace(servicioEdicion.Nombre))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El nombre es obligatorio");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(servicioEdicion.ServiceId))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El Service ID es obligatorio");
+                return;
+            }
+
+            if (servicioEdicion.CostoBase <= 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El costo base debe ser mayor a cero");
+                return;
+            }
+
+            if (servicioEdicion.PrecioVenta <= 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El precio de venta debe ser mayor a cero");
+                return;
+            }
+
+            // Actualizar fecha
+            servicioEdicion.UltimaActualizacion = DateTime.UtcNow;
+
+            // Guardar servicio utilizando el servicio real
+            var servicioGuardado = await SMSPoolService.GuardarServicio(servicioEdicion);
+
+            if (servicioGuardado != null)
+            {
+                // Actualizar la lista local para la UI
+                var index = servicios.FindIndex(s => s.Id == servicioGuardado.Id);
+                if (index >= 0)
+                {
+                    servicios[index] = servicioGuardado;
+                }
+                else
+                {
+                    servicios.Add(servicioGuardado);
+                    totalServicios++;
+                }
+
+                mostrarModalServicio = false;
+                await JSRuntime.InvokeVoidAsync("alert", "Servicio guardado correctamente");
+
+                // Mantener el filtro actual pero volver a aplicarlo
+                FiltrarServicios();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Error al guardar el servicio");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al guardar servicio");
+            await JSRuntime.InvokeVoidAsync("alert", "Error al guardar servicio: " + ex.Message);
+        }
+    }
+
+    private async Task CambiarEstadoServicio(SMSPoolServicio servicio)
+    {
+        try
+        {
+            // Cambiar estado utilizando el servicio real
+            bool resultado = await SMSPoolService.CambiarEstadoServicio(servicio.Id, !servicio.Activo);
+
+            if (resultado)
+            {
+                // Actualizar estado en la UI
+                servicio.Activo = !servicio.Activo;
+
+                // Mensaje de confirmación
+                string estado = servicio.Activo ? "activado" : "desactivado";
+                await JSRuntime.InvokeVoidAsync("alert", $"Servicio {estado} correctamente");
+
+                // Si estamos filtrando por estado, posiblemente necesitemos actualizar la lista
+                if (filtroEstado != "todos")
+                {
+                    FiltrarServicios();
+                }
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo cambiar el estado del servicio");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cambiar estado del servicio");
+            await JSRuntime.InvokeVoidAsync("alert", "Error al cambiar estado del servicio: " + ex.Message);
+        }
+    }
+}

@@ -17,6 +17,7 @@
                 _currentUserService = currentUserService;
             }
 
+
             public DbSet<NumeroTelefonico> NumerosTelefonicos { get; set; }
             public DbSet<Transaccion> Transacciones { get; set; }
             public DbSet<LogLlamada> LogsLlamadas { get; set; }
@@ -30,6 +31,10 @@
             public DbSet<LlamadaSaliente> LlamadasSalientes { get; set; }
             public DbSet<AdminLog> AdminLogs { get; set; }
             public DbSet<TransaccionAuditoria> TransaccionesAuditoria { get; set; }
+            public DbSet<SMSPoolServicio> SMSPoolServicios { get; set; }
+            public DbSet<SMSPoolNumero> SMSPoolNumeros { get; set; }
+            public DbSet<SMSPoolVerificacion> SMSPoolVerificaciones { get; set; }
+            public DbSet<SMSPoolConfiguracion> SMSPoolConfiguraciones { get; set; }
 
 
             protected override void OnModelCreating(ModelBuilder builder)
@@ -133,6 +138,34 @@
 
                 builder.Entity<RequisitosRegulatorios>()
                     .HasIndex(r => r.CodigoPais)
+                    .IsUnique();
+                // Configuración para SMSPoolServicio
+                builder.Entity<SMSPoolServicio>()
+                    .HasIndex(s => s.ServiceId)
+                    .IsUnique();
+
+                // Configuración para SMSPoolNumero
+                builder.Entity<SMSPoolNumero>()
+                    .HasIndex(n => n.OrderId)
+                    .IsUnique();
+
+                // Relación entre SMSPoolNumero y SMSPoolVerificacion
+                builder.Entity<SMSPoolVerificacion>()
+                    .HasOne(v => v.Numero)
+                    .WithMany(n => n.Verificaciones)
+                    .HasForeignKey(v => v.NumeroId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // Relación entre SMSPoolServicio y SMSPoolNumero
+                builder.Entity<SMSPoolNumero>()
+                    .HasOne(n => n.Servicio)
+                    .WithMany(s => s.Numeros)
+                    .HasForeignKey(n => n.ServicioId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // Configuración para SMSPoolConfiguracion
+                builder.Entity<SMSPoolConfiguracion>()
+                    .HasIndex(c => c.Clave)
                     .IsUnique();
 
                 builder.Entity<ConfiguracionSistema>().HasData(

@@ -1,0 +1,391 @@
+﻿@page "/verificaciones/historial"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using System.Security.Claims
+@using TelefonicaEmpresaria.Models
+@using TelefonicaEmpresarial.Services
+@attribute [Authorize]
+@inject UserManager<ApplicationUser> UserManager
+@inject ISMSPoolService SMSPoolService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ILogger<HistorialVerificaciones> Logger
+
+<div class="container mx-auto px-4 py-8">
+    <div class="flex items-center mb-4">
+        <button @onclick="Regresar" class="mr-3 text-gray-500 hover:text-gray-700">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+        </button>
+        <h1 class="text-3xl font-bold text-gray-800">Historial de Verificaciones</h1>
+    </div>
+
+    <p class="text-gray-600 mb-8">Historial de verificaciones temporales realizadas</p>
+
+    @if (cargando)
+    {
+        <div class="flex justify-center py-8">
+            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+    }
+    else if (error != null)
+    {
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">
+            <strong class="font-bold">Error:</strong>
+            <span class="block sm:inline">@error</span>
+        </div>
+        <button @onclick="CargarDatos" class="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+            Intentar nuevamente
+        </button>
+    }
+    else if (!numeros.Any())
+    {
+        <div class="bg-white rounded-lg shadow-md p-8 text-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <h2 class="text-xl font-semibold mb-2">No hay historial de verificaciones</h2>
+            <p class="text-gray-600 mb-6">No has realizado verificaciones temporales aún</p>
+            <button @onclick="IrAVerificaciones" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                Ver servicios disponibles
+            </button>
+        </div>
+    }
+    else
+    {
+        <!-- Filtros -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div class="flex items-center">
+                    <span class="text-gray-700 mr-2">Estado:</span>
+                    <select @bind="filtroEstado" class="w-40 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Todos</option>
+                        <option value="Activo">Activos</option>
+                        <option value="Expirado">Expirados</option>
+                        <option value="Cancelado">Cancelados</option>
+                    </select>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-gray-700 mr-2">Servicio:</span>
+                    <select @bind="filtroServicio" class="w-40 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="0">Todos</option>
+                        @foreach (var servicio in servicios)
+                        {
+                            <option value="@servicio.Id">@servicio.Nombre</option>
+                        }
+                    </select>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-gray-700 mr-2">SMS Recibido:</span>
+                    <select @bind="filtroSmsRecibido" class="w-40 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Todos</option>
+                        <option value="true">Sí</option>
+                        <option value="false">No</option>
+                    </select>
+                </div>
+                <button @onclick="AplicarFiltros" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                    Filtrar
+                </button>
+            </div>
+        </div>
+
+        <!-- Tabla de historial -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="p-6 border-b">
+                <h2 class="text-xl font-semibold">Verificaciones realizadas</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Servicio</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Número</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Código</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Costo</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        @foreach (var numero in numerosFiltrados)
+                        {
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        @if (numero.Servicio != null && !string.IsNullOrEmpty(numero.Servicio.IconoUrl))
+                                        {
+                                            <img class="h-8 w-8 mr-2" src="@numero.Servicio.IconoUrl" alt="@numero.Servicio.Nombre">
+                                        }
+                                        <div class="text-sm font-medium text-gray-900">@(numero.Servicio?.Nombre ?? "Desconocido")</div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-900">@numero.Numero</div>
+                                    <div class="text-xs text-gray-500">@numero.Pais</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @numero.FechaCompra.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    @switch (numero.Estado)
+                                    {
+                                        case "Activo":
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                                Activo
+                                            </span>
+                                            break;
+                                        case "Expirado":
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                                Expirado
+                                            </span>
+                                            break;
+                                        case "Cancelado":
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                                Cancelado
+                                            </span>
+                                            break;
+                                        default:
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                                @numero.Estado
+                                            </span>
+                                            break;
+                                    }
+                                    <br />
+                                    @if (numero.SMSRecibido)
+                                    {
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800 mt-1">
+                                            SMS Recibido
+                                        </span>
+                                    }
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    @if (!string.IsNullOrEmpty(numero.CodigoRecibido))
+                                    {
+                                        <div class="flex items-center">
+                                            <span class="text-sm font-medium bg-gray-100 px-2 py-1 rounded mr-2">@numero.CodigoRecibido</span>
+                                            <button @onclick="() => CopiarAlPortapapeles(numero.CodigoRecibido)" class="text-blue-600 hover:text-blue-800">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-sm text-gray-500">-</span>
+                                    }
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    $@numero.CostoPagado.ToString("0.00") MXN
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                    <div class="flex space-x-2">
+                                        <button @onclick="() => VerDetalles(numero.Id)" class="text-blue-600 hover:text-blue-900">
+                                            Detalles
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Paginación -->
+        @if (totalPaginas > 1)
+        {
+            <div class="flex justify-center mt-8">
+                <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                    <button @onclick="PaginaAnterior" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50" disabled="@(paginaActual == 1)">
+                        <span class="sr-only">Anterior</span>
+                        <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+
+                    @for (int i = 1; i <= totalPaginas; i++)
+                    {
+                        var pagina = i;
+                        <button @onclick="() => CambiarPagina(pagina)" class="relative inline-flex items-center px-4 py-2 border border-gray-300 @(paginaActual == pagina ? "bg-blue-50 text-blue-600 font-bold" : "bg-white text-gray-700") text-sm font-medium hover:bg-gray-50">
+                            @pagina
+                        </button>
+                    }
+
+                    <button @onclick="PaginaSiguiente" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50" disabled="@(paginaActual == totalPaginas)">
+                        <span class="sr-only">Siguiente</span>
+                        <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </nav>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private ApplicationUser? user;
+    private List<SMSPoolNumero> numeros = new List<SMSPoolNumero>();
+    private List<SMSPoolNumero> numerosFiltrados = new List<SMSPoolNumero>();
+    private List<SMSPoolServicio> servicios = new List<SMSPoolServicio>();
+    private bool cargando = true;
+    private string? error;
+
+    // Filtros
+    private string filtroEstado = "";
+    private int filtroServicio = 0;
+    private string filtroSmsRecibido = "";
+
+    // Paginación
+    private int paginaActual = 1;
+    private int elementosPorPagina = 10;
+    private int totalPaginas = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        try
+        {
+            cargando = true;
+            error = null;
+
+            // Obtener usuario actual
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            user = await UserManager.GetUserAsync(authState.User);
+
+            if (user == null)
+            {
+                error = "No se pudo obtener información del usuario";
+                return;
+            }
+
+            // Cargar servicios disponibles (para filtro)
+            servicios = await SMSPoolService.ObtenerServiciosDisponibles();
+
+            // Cargar todos los números del usuario
+            numeros = await SMSPoolService.ObtenerNumerosPorUsuario(user.Id);
+
+            // Aplicar filtros
+            AplicarFiltros();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al cargar historial de verificaciones");
+            error = "Ocurrió un error al cargar la información. Por favor, intente nuevamente.";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private void AplicarFiltros()
+    {
+        try
+        {
+            var query = numeros.AsQueryable();
+
+            // Filtrar por estado
+            if (!string.IsNullOrEmpty(filtroEstado))
+            {
+                query = query.Where(n => n.Estado == filtroEstado);
+            }
+
+            // Filtrar por servicio
+            if (filtroServicio > 0)
+            {
+                query = query.Where(n => n.ServicioId == filtroServicio);
+            }
+
+            // Filtrar por SMS recibido
+            if (!string.IsNullOrEmpty(filtroSmsRecibido))
+            {
+                bool smsRecibido = filtroSmsRecibido == "true";
+                query = query.Where(n => n.SMSRecibido == smsRecibido);
+            }
+
+            // Ordenar por fecha de compra (más reciente primero)
+            query = query.OrderByDescending(n => n.FechaCompra);
+
+            // Calcular paginación
+            var totalElementos = query.Count();
+            totalPaginas = (int)Math.Ceiling(totalElementos / (double)elementosPorPagina);
+
+            if (paginaActual > totalPaginas && totalPaginas > 0)
+            {
+                paginaActual = totalPaginas;
+            }
+            else if (paginaActual < 1)
+            {
+                paginaActual = 1;
+            }
+
+            // Aplicar paginación
+            numerosFiltrados = query
+                .Skip((paginaActual - 1) * elementosPorPagina)
+                .Take(elementosPorPagina)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al aplicar filtros");
+            error = "Error al filtrar resultados";
+        }
+    }
+
+    private void CambiarPagina(int pagina)
+    {
+        paginaActual = pagina;
+        AplicarFiltros();
+    }
+
+    private void PaginaAnterior()
+    {
+        if (paginaActual > 1)
+        {
+            paginaActual--;
+            AplicarFiltros();
+        }
+    }
+
+    private void PaginaSiguiente()
+    {
+        if (paginaActual < totalPaginas)
+        {
+            paginaActual++;
+            AplicarFiltros();
+        }
+    }
+
+    private void VerDetalles(int numeroId)
+    {
+        NavigationManager.NavigateTo($"/verificaciones/detalle/{numeroId}");
+    }
+
+    private async Task CopiarAlPortapapeles(string texto)
+    {
+        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", texto);
+        await JSRuntime.InvokeVoidAsync("alert", "Código copiado al portapapeles");
+    }
+
+    private void Regresar()
+    {
+        NavigationManager.NavigateTo("/verificaciones");
+    }
+
+    private void IrAVerificaciones()
+    {
+        NavigationManager.NavigateTo("/verificaciones");
+    }
+
+    [Inject]
+    private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
+}

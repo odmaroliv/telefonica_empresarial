@@ -48,6 +48,7 @@ namespace TelefonicaEmpresaria.Utils
                 return path.Contains("/api/webhooks/") ||
                        path.Contains("/api/twilio/") ||
                        path.Contains("api/webhooks/twilio") ||
+                       path.Contains("api/webhooks/smspool") ||
                        path.Contains("api/llamadas");
 
             }
