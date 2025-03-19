@@ -10,17 +10,53 @@ namespace TelefonicaEmpresaria.Utils
 
     public class CurrentUserService : ICurrentUserService
     {
-        public string? UserId { get; }
-        public bool IsAdmin { get; }
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
         public CurrentUserService(IHttpContextAccessor httpContextAccessor)
         {
-            var user = httpContextAccessor.HttpContext?.User;
-            if (user != null && user.Identity?.IsAuthenticated == true)
+            _httpContextAccessor = httpContextAccessor;
+        }
+
+        public string UserId
+        {
+            get
             {
-                UserId = user.FindFirstValue(ClaimTypes.NameIdentifier);
-                // Verificamos si el usuario tiene el rol "Admin"
-                IsAdmin = user.IsInRole("Admin");
+                if (IsWebhookRequest)
+                    return null; // No se usa en filtros para webhooks
+
+                return _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            }
+        }
+
+        public bool IsAdmin
+        {
+            get
+            {
+                if (IsWebhookRequest || IsBackgroundJob)
+                    return true;
+
+
+                return _httpContextAccessor.HttpContext?.User?.IsInRole("Admin") ?? false;
+            }
+        }
+
+        private bool IsWebhookRequest
+        {
+            get
+            {
+                var path = _httpContextAccessor.HttpContext?.Request.Path.Value ?? "";
+                return path.Contains("/api/webhooks/") ||
+                       path.Contains("/api/twilio/") ||
+                       path.Contains("api/webhooks/twilio") ||
+                       path.Contains("api/llamadas");
+
+            }
+        }
+        private bool IsBackgroundJob
+        {
+            get
+            {
+                return _httpContextAccessor.HttpContext == null;
             }
         }
     }
