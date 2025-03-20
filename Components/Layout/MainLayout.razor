@@ -44,45 +44,71 @@
             <div class="flex-1">
                 <div class="container mx-auto">
                     <div class="flex flex-col md:flex-row">
+                        <!-- Menú de navegación reorganizado con secciones -->
                         <nav class="md:w-64 bg-white shadow-md p-4 m-4 md:mr-0 rounded-lg h-fit">
-                            <div class="space-y-1">
-                                <NavLink href="/dashboard" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
-                                        <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
-                                    </svg>
-                                    Dashboard
-                                </NavLink>
-                                <NavLink href="/numeros/llamar" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M6.62 10.79a15.478 15.478 0 006.18 6.18l2.2-2.2a1.5 1.5 0 011.51-.36c1.14.34 2.35.52 3.58.52a1.5 1.5 0 011.5 1.5V20a1.5 1.5 0 01-1.5 1.5C10.49 21.5 2.5 13.51 2.5 3.5A1.5 1.5 0 014 2h3.5a1.5 1.5 0 011.5 1.5c0 1.23.18 2.44.52 3.58a1.5 1.5 0 01-.36 1.51l-2.2 2.2z" />
-                                    </svg>
-                                    Llamar
-                                </NavLink>
+                            <div class="space-y-2">
+                                <!-- Sección 1: Principal -->
+                                <div class="pb-2 mb-2 border-b border-gray-200">
+                                    <div class="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-2 px-3">Principal</div>
+                                    <NavLink href="/dashboard" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                                            <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+                                        </svg>
+                                        Dashboard
+                                    </NavLink>
+                                </div>
 
-                                <NavLink href="/numeros/comprar" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
-                                    </svg>
-                                    Comprar Número
-                                </NavLink>
-                                <NavLink href="/saldo" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
-                                        <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" />
-                                        <path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clip-rule="evenodd" />
-                                    </svg>
-                                    Mi Saldo
-                                </NavLink>
-                                <NavLink href="/verificaciones" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fill-rule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v-2l2.257-2.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z" clip-rule="evenodd" />
-                                    </svg>
-                                    Verificaciones
-                                </NavLink>
+                                <!-- Sección 2: Verificaciones -->
+                                <div class="pb-2 mb-2 border-b border-gray-200">
+                                    <div class="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-2 px-3">Verificaciones</div>
+                                    <NavLink href="/verificaciones" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v-2l2.257-2.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        Verificaciones SMS
+                                    </NavLink>
+                                </div>
 
-                              
+                                <!-- Sección 3: Telefonía -->
+                                <div class="pb-2 mb-2 border-b border-gray-200">
+                                    <div class="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-2 px-3">Telefonía</div>
+                                    <NavLink href="/numeros/llamar" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                                            <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                                        </svg>
+                                        Realizar Llamadas
+                                    </NavLink>
+
+                                    <NavLink href="/numeros/comprar" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
+                                        </svg>
+                                        Comprar Número
+                                    </NavLink>
+                                </div>
+
+                                <!-- Sección 4: Finanzas -->
+                                <div class="pb-2 mb-2 border-b border-gray-200">
+                                    <div class="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-2 px-3">Finanzas</div>
+                                    <NavLink href="/saldo" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                                            <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" />
+                                            <path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clip-rule="evenodd" />
+                                        </svg>
+                                        Mi Saldo
+                                    </NavLink>
+
+                                    <NavLink href="/saldo/suscripciones" class="flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-gray-100 group" ActiveClass="bg-blue-50 text-blue-600">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500 group-hover:text-gray-600 group-[.active]:text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M5 2a2 2 0 00-2 2v14l3.5-2 3.5 2 3.5-2 3.5 2V4a2 2 0 00-2-2H5zm4.707 3.707a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L8.414 9H10a3 3 0 013 3v1a1 1 0 102 0v-1a5 5 0 00-5-5H8.414l1.293-1.293z" clip-rule="evenodd" />
+                                        </svg>
+                                        Suscripciones
+                                    </NavLink>
+                                </div>
+
+                                <!-- Admininstración (Condicional) -->
                                 <AuthorizeView Roles="Admin" Context="adminContext">
                                     <div>
-                                        <!-- Enlace principal a Administración -->
                                         <div class="flex items-center px-3 py-2 text-sm font-medium rounded-md
                     @(NavMenuService.IsAdminMenuExpanded ? "bg-blue-50 text-blue-600" : "hover:bg-gray-100")"
                                              @onclick="ToggleAdminMenu">

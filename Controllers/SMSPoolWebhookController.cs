@@ -64,7 +64,7 @@ namespace TelefonicaEmpresarial.Controllers
                     FechaRecepcion = DateTime.UtcNow,
                     MensajeCompleto = evento.full_sms,
                     CodigoExtraido = codigo,
-                    Remitente = "SMSPool Webhook" // SMSPool no proporciona remitente en el webhook
+                    Remitente = "SMS"
                 };
 
                 _context.SMSPoolVerificaciones.Add(verificacion);
