@@ -279,6 +279,7 @@
                 }
             });
         }, null, TimeSpan.Zero, TimeSpan.FromSeconds(10));
+
     }
 
     protected override async Task OnParametersSetAsync()
@@ -300,6 +301,16 @@
         {
             cargando = true;
             error = null;
+            numero = await SMSPoolService.ObtenerNumeroPorId(NumeroId);
+
+            if (numero != null && numero.Estado == "Pendiente")
+            {
+                // Intentar resolver el estado pendiente
+                await SMSPoolService.ResolverNumerosPendientes(numero.UserId);
+
+                // Volver a cargar el número por si ha cambiado
+                numero = await SMSPoolService.ObtenerNumeroPorId(NumeroId);
+            }
 
             // Obtener usuario actual
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();

@@ -585,6 +585,8 @@ namespace TelefonicaEmpresarial.Services
                                 {
                                     esRecargaRecurrente = true;
                                     await ProcesarRecargaRecurrente(invoice);
+
+
                                 }
                             }
                             catch (Exception ex)
@@ -645,6 +647,61 @@ namespace TelefonicaEmpresarial.Services
                             {
                                 // Recarga recurrente - procesar primer pago inmediatamente
                                 await ProcesarPrimerPagoSuscripcionRecarga(sesionCompletada);
+
+                                if (!string.IsNullOrEmpty(sesionCompletada.SubscriptionId))
+                                {
+                                    // Obtener el customerId y el usuario asociado
+                                    var customerId = sesionCompletada.CustomerId;
+                                    var usuario = await _context.Users.FirstOrDefaultAsync(u => u.StripeCustomerId == customerId);
+
+                                    if (usuario == null)
+                                    {
+                                        _logger.LogWarning($"No se encontró usuario para el cliente {customerId}");
+                                        return;
+                                    }
+
+                                    // Calcular monto a partir de los metadatos o líneas de la sesión
+                                    decimal monto = 0;
+                                    if (sesionCompletada.Metadata?.TryGetValue("MontoMensual", out var montoStr) == true)
+                                    {
+                                        if (!decimal.TryParse(montoStr, out monto))
+                                        {
+                                            _logger.LogWarning($"No se pudo determinar el monto para la sesión {sesionCompletada.Id}");
+                                            return;
+                                        }
+                                    }
+                                    else if (sesionCompletada.AmountTotal.HasValue)
+                                    {
+                                        monto = (decimal)sesionCompletada.AmountTotal.Value / 100;
+                                    }
+                                    else
+                                    {
+                                        _logger.LogWarning($"No se pudo determinar el monto para la sesión {sesionCompletada.Id}");
+                                        return;
+                                    }
+
+                                    var suscripcion = await _context.SuscripcionesRecarga
+                                        .FirstOrDefaultAsync(s => s.UserId == usuario.Id &&
+                                                                s.StripeSubscriptionId == sesionCompletada.SubscriptionId);
+
+                                    if (suscripcion == null)
+                                    {
+                                        // Si no existe, crearla
+                                        _logger.LogInformation($"Creando registro de suscripción de recarga para usuario {usuario.Id}");
+
+                                        _context.SuscripcionesRecarga.Add(new SuscripcionRecargaAutomatica
+                                        {
+                                            UserId = usuario.Id,
+                                            StripeSubscriptionId = sesionCompletada.SubscriptionId,
+                                            MontoMensual = monto,
+                                            FechaCreacion = DateTime.UtcNow,
+                                            ProximaRecarga = DateTime.UtcNow.AddMonths(1),
+                                            Activa = true
+                                        });
+
+                                        await _context.SaveChangesAsync();
+                                    }
+                                }
                             }
                             else
                             {
@@ -977,6 +1034,24 @@ namespace TelefonicaEmpresarial.Services
                     {
                         await dbTransaction.CommitAsync();
                         _logger.LogInformation($"Recarga automática de ${monto} procesada correctamente para usuario {usuario.Id}");
+
+                        // Actualizar fecha de próxima recarga
+                        try
+                        {
+                            var suscripcion = await _context.SuscripcionesRecarga
+                                .FirstOrDefaultAsync(s => s.UserId == usuario.Id &&
+                                                         s.StripeSubscriptionId == invoice.SubscriptionId);
+
+                            if (suscripcion != null)
+                            {
+                                suscripcion.ProximaRecarga = DateTime.UtcNow.AddMonths(1);
+                                await _context.SaveChangesAsync();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error al actualizar fecha de próxima recarga");
+                        }
                     }
                     else
                     {
@@ -1697,6 +1772,37 @@ namespace TelefonicaEmpresarial.Services
                             montoMensual,
                             System.Text.Json.JsonSerializer.Serialize(new { session.Id, customerId, montoMensual })
                         );
+                    }
+                    if (usuario != null)
+                    {
+                        // Actualizar monitoreo
+                        await _transaccionMonitorService.RegistrarInicioTransaccion(
+                            "SuscripcionRecargaSaldo",
+                            session.Id,
+                            usuario.Id,
+                            montoMensual,
+                            System.Text.Json.JsonSerializer.Serialize(new { session.Id, customerId, montoMensual })
+                        );
+
+                        // Registrar en tabla de suscripciones
+                        // Esta parte es nueva
+                        if (!string.IsNullOrEmpty(session.SubscriptionId))
+                        {
+                            _logger.LogInformation($"Registrando suscripción de recarga {session.SubscriptionId} para usuario {usuario.Id}");
+
+                            // Crear registro de suscripción en nuestra BD
+                            _context.SuscripcionesRecarga.Add(new SuscripcionRecargaAutomatica
+                            {
+                                UserId = usuario.Id,
+                                StripeSubscriptionId = session.SubscriptionId,
+                                MontoMensual = montoMensual,
+                                FechaCreacion = DateTime.UtcNow,
+                                ProximaRecarga = DateTime.UtcNow.AddMonths(1),
+                                Activa = true
+                            });
+
+                            await _context.SaveChangesAsync();
+                        }
                     }
 
                     return new StripeCheckoutSession

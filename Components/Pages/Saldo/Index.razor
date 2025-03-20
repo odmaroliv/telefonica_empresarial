@@ -527,22 +527,45 @@
             if (string.IsNullOrEmpty(userId))
                 return;
 
-            // Buscar transacciones activas de suscripción de recarga
-            var transacciones = await DbContext.Transacciones
-                .Where(t => t.UserId == userId &&
-                       t.Concepto.Contains("Recarga automática") &&
-                       t.Status == "Completado")
+            // Buscar suscripciones activas directamente en la tabla
+            var suscripcionesActivas = await DbContext.SuscripcionesRecarga
+                .Where(s => s.UserId == userId && s.Activa)
                 .ToListAsync();
 
-            foreach (var transaccion in transacciones)
+            // Si no hay suscripciones en la tabla, intentar con el método anterior
+            if (!suscripcionesActivas.Any())
             {
-                // Estimar próximo cargo como un mes después de la fecha de la transacción
-                suscripcionesRecarga.Add(new SuscripcionRecargaDTO
-                    {
-                        Id = transaccion.Id,
-                        Monto = transaccion.Monto,
-                        ProximoCargoEstimado = transaccion.Fecha.AddMonths(1)
-                    });
+                // Buscar transacciones activas de suscripción de recarga (método antiguo como respaldo)
+                var transacciones = await DbContext.Transacciones
+                    .Where(t => t.UserId == userId &&
+                           t.Concepto.Contains("Recarga automática") &&
+                           t.Status == "Completado")
+                    .ToListAsync();
+
+                foreach (var transaccion in transacciones)
+                {
+                    // Estimar próximo cargo como un mes después de la fecha de la transacción
+                    suscripcionesRecarga.Add(new SuscripcionRecargaDTO
+                        {
+                            Id = transaccion.Id,
+                            Monto = transaccion.Monto,
+                            ProximoCargoEstimado = transaccion.Fecha.AddMonths(1)
+                        });
+                }
+            }
+            else
+            {
+                // Convertir las suscripciones de la tabla al DTO para mostrar
+                foreach (var suscripcion in suscripcionesActivas)
+                {
+                    suscripcionesRecarga.Add(new SuscripcionRecargaDTO
+                        {
+                            Id = suscripcion.Id,
+                            Monto = suscripcion.MontoMensual,
+                            ProximoCargoEstimado = suscripcion.ProximaRecarga,
+                            StripeSubscriptionId = suscripcion.StripeSubscriptionId  // Puedes agregar este campo al DTO
+                        });
+                }
             }
         }
         catch (Exception ex)
@@ -578,9 +601,8 @@
         public int Id { get; set; }
         public decimal Monto { get; set; }
         public DateTime ProximoCargoEstimado { get; set; }
+        public string StripeSubscriptionId { get; set; } = string.Empty;  
     }
 }
 
-    [Inject]
-    private IServiceScopeFactory ScopeFactory { get; set; } = default!;
-}
+   

@@ -3,6 +3,8 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
+@using TelefonicaEmpresaria.Data.TelefonicaEmpresarial.Data
 @using TelefonicaEmpresaria.Models
 @using TelefonicaEmpresarial.Services
 @attribute [Authorize(Roles = "Admin")]
@@ -10,6 +12,7 @@
 @inject ISMSPoolService SMSPoolService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
+@inject ApplicationDbContext DbContext
 @inject ILogger<AdminVerificaciones> Logger
 
 <div class="container mx-auto px-4 py-8">
@@ -88,13 +91,20 @@
                     </div>
 
                     <div class="mt-6 space-y-3">
-                        <button @onclick="ActualizarServicios" class="w-full px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">
-                            Actualizar Servicios Disponibles
-                        </button>
+                        <div class="mt-6 space-y-3">
+                            <button @onclick="ActualizarServicios" class="w-full px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">
+                                Actualizar Servicios Disponibles
+                            </button>
 
-                        <button @onclick="RecalcularPrecios" class="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
-                            Recalcular Precios
-                        </button>
+                            <button @onclick="RecalcularPrecios" class="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                                Recalcular Precios
+                            </button>
+
+                            <button @onclick="EjecutarConciliacion" class="w-full px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors">
+                                Conciliar Compras Pendientes
+                            </button>
+                       
+                        </div>
                     </div>
                 </div>
 
@@ -585,6 +595,53 @@
         {
             Logger.LogError(ex, "Error al guardar margen de ganancia");
             await JSRuntime.InvokeVoidAsync("alert", "Error al guardar margen de ganancia");
+        }
+    }
+
+    private async Task EjecutarConciliacion()
+    {
+        try
+        {
+            cargando = true;
+
+            // Obtener todos los usuarios con compras pendientes
+            var usuarios = await DbContext.SMSPoolNumeros
+                .Where(n => n.Estado == "Pendiente")
+                .Select(n => n.UserId)
+                .Distinct()
+                .ToListAsync();
+
+            if (!usuarios.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No hay compras pendientes para conciliar");
+                return;
+            }
+
+            int conciliados = 0;
+
+            // Conciliar cada usuario
+            foreach (var userId in usuarios)
+            {
+                bool resultado = await SMSPoolService.ResolverNumerosPendientes(userId);
+                if (resultado)
+                {
+                    conciliados++;
+                }
+            }
+
+            await JSRuntime.InvokeVoidAsync("alert", $"Conciliación completada. Se procesaron {conciliados} de {usuarios.Count} usuarios con compras pendientes.");
+
+            // Recargar las verificaciones
+            ultimasVerificaciones = await SMSPoolService.ObtenerUltimasVerificacionesAdmin();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al ejecutar conciliación");
+            await JSRuntime.InvokeVoidAsync("alert", "Error al ejecutar conciliación: " + ex.Message);
+        }
+        finally
+        {
+            cargando = false;
         }
     }
 

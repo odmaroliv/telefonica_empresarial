@@ -35,6 +35,7 @@
             public DbSet<SMSPoolNumero> SMSPoolNumeros { get; set; }
             public DbSet<SMSPoolVerificacion> SMSPoolVerificaciones { get; set; }
             public DbSet<SMSPoolConfiguracion> SMSPoolConfiguraciones { get; set; }
+            public DbSet<SuscripcionRecargaAutomatica> SuscripcionesRecarga { get; set; }
 
 
             protected override void OnModelCreating(ModelBuilder builder)

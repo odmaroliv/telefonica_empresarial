@@ -266,6 +266,13 @@ builder.Services.AddQuartz(q =>
         .WithIdentity("LiberarNumeros-Trigger")
         .WithCronSchedule("0 0 4 * * ?")); // Ejecutar a las 4 AM todos los días
 
+    var pendingOrdersJobKey = new JobKey("PendingOrdersJob");
+    q.AddJob<PendingOrdersJob>(opts => opts.WithIdentity(pendingOrdersJobKey));
+    q.AddTrigger(opts => opts
+        .ForJob(pendingOrdersJobKey)
+        .WithIdentity("PendingOrders-Trigger")
+        .WithCronSchedule("0 */5 * * * ?"));
+
 
     // Agregar un trigger adicional para procesar en lotes durante el día
     q.AddTrigger(opts => opts

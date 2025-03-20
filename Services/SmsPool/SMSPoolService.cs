@@ -11,6 +11,9 @@ namespace TelefonicaEmpresarial.Services
     public interface ISMSPoolService
     {
         // Métodos para gestionar servicios
+        Task<SMSPoolNumero> ObtenerNumeroPorId(int numeroId);
+        Task<bool> ResolverNumerosPendientes(string userId);
+        Task<bool> SincronizarComprasActivas(string userId);
         Task<List<SMSPoolServicio>> ObtenerServiciosDisponibles();
         Task<SMSPoolServicio> ObtenerServicioPorId(int servicioId);
         Task<bool> ActualizarServiciosDisponibles();
@@ -84,7 +87,41 @@ namespace TelefonicaEmpresarial.Services
 
         #region Métodos privados para interactuar con la API
 
-        // Reemplaza el método SendPostRequest en el SMSPoolService con esta versión mejorada:
+        public async Task<SMSPoolNumero> ObtenerNumeroPorId(int numeroId)
+        {
+            try
+            {
+                // Obtener el número por su ID, incluyendo el servicio relacionado
+                var numero = await _context.SMSPoolNumeros
+                    .Include(n => n.Servicio)
+                    .FirstOrDefaultAsync(n => n.Id == numeroId);
+
+                if (numero == null)
+                {
+                    _logger.LogWarning($"Número con ID {numeroId} no encontrado");
+                    return null;
+                }
+
+                // Si el número está en estado pendiente, intentar sincronizar
+                if (numero.Estado == "Pendiente")
+                {
+                    await SincronizarComprasActivas(numero.UserId);
+
+                    // Recargar el número después de la sincronización
+                    numero = await _context.SMSPoolNumeros
+                        .Include(n => n.Servicio)
+                        .FirstOrDefaultAsync(n => n.Id == numeroId);
+                }
+
+                return numero;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al obtener número por ID: {numeroId}");
+                return null;
+            }
+        }
+
 
         private async Task<T> SendPostRequest<T>(string endpoint, Dictionary<string, string> parameters)
         {
@@ -110,6 +147,35 @@ namespace TelefonicaEmpresarial.Services
                 // Leer el contenido de la respuesta independientemente del código de estado
                 var responseString = await response.Content.ReadAsStringAsync();
                 _logger.LogDebug($"Respuesta de API {endpoint}: {responseString}");
+
+                // Verificar si la respuesta es HTML en lugar de JSON
+                if (responseString.TrimStart().StartsWith("<"))
+                {
+                    _logger.LogWarning($"Respuesta en formato HTML detectada para {endpoint}: {responseString.Substring(0, Math.Min(200, responseString.Length))}");
+
+                    // Si es una compra, registrar que la respuesta fue en formato HTML y continuar
+                    if (endpoint == "purchase/sms" && response.IsSuccessStatusCode)
+                    {
+                        _logger.LogInformation("La operación de compra probablemente fue exitosa pero la respuesta es HTML. Se marcará para conciliación.");
+
+                        // Devolver un objeto que indique que se debe verificar mediante conciliación
+                        if (typeof(T) == typeof(object) || typeof(T).Name == "JToken" || typeof(T).Name == "JObject")
+                        {
+                            var conciliacionObj = new
+                            {
+                                success = 0,
+                                message = "La compra podría haber sido exitosa pero se requiere conciliación para confirmar",
+                                requiere_conciliacion = true,
+                                parametros = parameters
+                            };
+
+                            return (T)(object)JObject.FromObject(conciliacionObj);
+                        }
+                    }
+
+                    // Para otros endpoints, lanzar excepción específica que puede ser manejada
+                    throw new ApplicationException($"La API devolvió HTML en lugar de JSON para el endpoint {endpoint}");
+                }
 
                 // Si la respuesta no indica éxito, registrar el error pero continuar para manejar la respuesta
                 if (!response.IsSuccessStatusCode)
@@ -190,6 +256,67 @@ namespace TelefonicaEmpresarial.Services
         #endregion
 
         #region Métodos para gestionar servicios
+
+        public async Task<bool> SincronizarComprasActivas(string userId)
+        {
+            try
+            {
+                // Consultar compras activas en SMSPool
+                var response = await SendPostRequest<dynamic>("request/active", new Dictionary<string, string>());
+
+                if (response == null)
+                {
+                    return false;
+                }
+
+                // Procesar cada compra activa
+                foreach (var compra in response)
+                {
+                    string orderId = compra.id?.ToString();
+                    string numero = compra.number?.ToString();
+                    string serviceId = compra.service?.ToString();
+
+                    // Verificar si ya existe en nuestra base de datos
+                    var numeroExistente = await _context.SMSPoolNumeros
+                        .FirstOrDefaultAsync(n => n.OrderId == orderId);
+
+                    if (numeroExistente == null)
+                    {
+                        // Buscar el servicio por su ServiceId
+                        var servicio = await _context.SMSPoolServicios
+                            .FirstOrDefaultAsync(s => s.ServiceId == serviceId);
+
+                        if (servicio != null)
+                        {
+                            // Crear el registro en nuestra base de datos
+                            var nuevoNumero = new SMSPoolNumero
+                            {
+                                UserId = userId,
+                                ServicioId = servicio.Id,
+                                Numero = numero,
+                                OrderId = orderId,
+                                Pais = compra.country?.ToString() ?? "US",
+                                FechaCompra = DateTime.UtcNow,
+                                FechaExpiracion = DateTime.UtcNow.AddMinutes(20),
+                                Estado = "Activo",
+                                CostoPagado = servicio.PrecioVenta,
+                                SMSRecibido = false
+                            };
+
+                            _context.SMSPoolNumeros.Add(nuevoNumero);
+                        }
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al sincronizar compras activas con SMSPool");
+                return false;
+            }
+        }
         public async Task<(List<SMSPoolServicio> Servicios, int Total)> ObtenerServiciosPaginados(string filtro = "", int pagina = 1, int elementosPorPagina = 10)
         {
             try
@@ -650,101 +777,194 @@ namespace TelefonicaEmpresarial.Services
                     return (null, $"Saldo insuficiente. Se requieren ${servicio.PrecioVenta} MXN");
                 }
 
-                // Asegurarse de que estamos usando el ServiceId de la API, no el Id de nuestra base de datos
-                _logger.LogInformation($"Comprando número con ServiceId: {servicio.ServiceId}, País: {pais}");
-
-                // Comprar número en SMSPool
-                var parameters = new Dictionary<string, string>
-        {
-            { "country", pais },
-            { "service", servicio.ServiceId }
-        };
-
-                // Log detallado de los parámetros para depuración
-                _logger.LogInformation($"Parámetros de compra: {JsonConvert.SerializeObject(parameters)}");
-
-                var response = await SendPostRequest<dynamic>("purchase/sms", parameters);
-                _logger.LogInformation($"Respuesta de compra: {JsonConvert.SerializeObject(response)}");
-
-                // Extraer información del número comprado
-                string orderId = "";
-                string numero = "";
-
-                // Verificar el formato de la respuesta y extraer la información
                 try
                 {
-                    if (response is Newtonsoft.Json.Linq.JObject)
-                    {
-                        var responseObj = response as Newtonsoft.Json.Linq.JObject;
+                    // Intentar comprar número
+                    var parameters = new Dictionary<string, string>
+            {
+                { "country", pais },
+                { "service", servicio.ServiceId }
+            };
 
-                        // Verificar si la respuesta indica éxito
-                        if (responseObj["success"] == null || responseObj["success"].ToString() != "1")
+                    var response = await SendPostRequest<dynamic>("purchase/sms", parameters);
+
+                    // Procesar respuesta exitosa
+                    if (response != null && response.success != null && response.success.ToString() == "1")
+                    {
+                        string orderId = response.id?.ToString();
+                        string numero = response.number?.ToString();
+
+                        // Descontar saldo y guardar en base de datos
+                        bool saldoDescontado = await _saldoService.DescontarSaldo(
+                            userId,
+                            servicio.PrecioVenta,
+                            $"Compra de número temporal para {servicio.Nombre}"
+                        );
+
+                        if (!saldoDescontado)
                         {
-                            string errorMsg = responseObj["message"]?.ToString() ?? "Error al comunicarse con SMSPool";
-                            _logger.LogError($"Error al comprar número: {errorMsg}");
-                            return (null, errorMsg);
+                            await CancelarNumeroEnSMSPool(orderId);
+                            return (null, "Error al descontar saldo");
                         }
 
-                        orderId = responseObj["id"]?.ToString();
-                        numero = responseObj["number"]?.ToString();
+                        var nuevoNumero = new SMSPoolNumero
+                        {
+                            UserId = userId,
+                            ServicioId = servicioId,
+                            Numero = numero,
+                            OrderId = orderId,
+                            Pais = pais,
+                            FechaCompra = DateTime.UtcNow,
+                            FechaExpiracion = DateTime.UtcNow.AddMinutes(20),
+                            Estado = "Activo",
+                            CostoPagado = servicio.PrecioVenta,
+                            SMSRecibido = false
+                        };
+
+                        _context.SMSPoolNumeros.Add(nuevoNumero);
+                        await _context.SaveChangesAsync();
+
+                        return (nuevoNumero, string.Empty);
                     }
-                    // Para pruebas y compatibilidad, usar números simulados si no se puede obtener desde la API
                     else
                     {
-                        _logger.LogWarning("Formato de respuesta no reconocido. Generando número simulado.");
-                        orderId = Guid.NewGuid().ToString().Substring(0, 8);
-                        numero = $"+1{new Random().Next(200, 999)}{new Random().Next(100, 999)}{new Random().Next(1000, 9999)}";
+                        string errorMsg = "Error en la respuesta de SMSPool";
+                        if (response != null && response.message != null)
+                        {
+                            errorMsg = response.message.ToString();
+                        }
+
+                        // Si la API falló pero podría haber completado la compra, intentar sincronizar
+                        await SincronizarComprasActivas(userId);
+
+                        // Verificar si la sincronización encontró el número que acabamos de intentar comprar
+                        var numeroSincronizado = await _context.SMSPoolNumeros
+                            .Where(n => n.UserId == userId && n.ServicioId == servicioId)
+                            .OrderByDescending(n => n.FechaCompra)
+                            .FirstOrDefaultAsync();
+
+                        if (numeroSincronizado != null && (DateTime.UtcNow - numeroSincronizado.FechaCompra).TotalMinutes < 5)
+                        {
+                            // La compra probablemente tuvo éxito a pesar del error de API
+                            return (numeroSincronizado, string.Empty);
+                        }
+
+                        return (null, errorMsg);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error al procesar respuesta de compra de número");
-                    return (null, "Error al procesar la respuesta del servidor");
+                    // Si ocurre cualquier excepción en la comunicación con la API,
+                    // intentar sincronizar compras para detectar si la operación tuvo éxito
+                    _logger.LogWarning(ex, "Error en comunicación con SMSPool, intentando sincronizar compras");
+
+                    // Guardar un registro de compra "pendiente" 
+                    var numeroPendiente = new SMSPoolNumero
+                    {
+                        UserId = userId,
+                        ServicioId = servicioId,
+                        Numero = "Pendiente", // Placeholder hasta sincronizar
+                        OrderId = "Pendiente-" + Guid.NewGuid().ToString(),
+                        Pais = pais,
+                        FechaCompra = DateTime.UtcNow,
+                        FechaExpiracion = DateTime.UtcNow.AddMinutes(20),
+                        Estado = "Pendiente", // Estado especial
+                        CostoPagado = servicio.PrecioVenta,
+                        SMSRecibido = false
+                    };
+
+                    _context.SMSPoolNumeros.Add(numeroPendiente);
+                    await _context.SaveChangesAsync();
+
+                    // Intentar sincronizar
+                    bool sincronizado = await SincronizarComprasActivas(userId);
+
+                    if (sincronizado)
+                    {
+                        // Verificar si se encontró una compra real que reemplaza la pendiente
+                        var numeroReal = await _context.SMSPoolNumeros
+                            .Where(n => n.UserId == userId && n.ServicioId == servicioId && n.Estado == "Activo")
+                            .OrderByDescending(n => n.FechaCompra)
+                            .FirstOrDefaultAsync();
+
+                        if (numeroReal != null && numeroReal.Id != numeroPendiente.Id)
+                        {
+                            // Eliminar el registro pendiente
+                            _context.SMSPoolNumeros.Remove(numeroPendiente);
+                            await _context.SaveChangesAsync();
+
+                            return (numeroReal, string.Empty);
+                        }
+                    }
+
+                    // No se pudo sincronizar, mantener como pendiente
+                    return (numeroPendiente, "La compra está pendiente de confirmación. Intente verificar más tarde.");
                 }
-
-                if (string.IsNullOrEmpty(orderId) || string.IsNullOrEmpty(numero))
-                {
-                    return (null, "No se pudo obtener el número o ID de orden");
-                }
-
-                // Descontar saldo del usuario
-                bool saldoDescontado = await _saldoService.DescontarSaldo(
-                    userId,
-                    servicio.PrecioVenta,
-                    $"Compra de número temporal para {servicio.Nombre}"
-                );
-
-                if (!saldoDescontado)
-                {
-                    // Cancelar el número en SMSPool si no se pudo descontar saldo
-                    await CancelarNumeroEnSMSPool(orderId);
-                    return (null, "Error al descontar saldo");
-                }
-
-                // Guardar en base de datos
-                var nuevoNumero = new SMSPoolNumero
-                {
-                    UserId = userId,
-                    ServicioId = servicioId,
-                    Numero = numero,
-                    OrderId = orderId,
-                    Pais = pais,
-                    FechaCompra = DateTime.UtcNow,
-                    FechaExpiracion = DateTime.UtcNow.AddMinutes(20), // Por defecto 20 minutos
-                    Estado = "Activo",
-                    CostoPagado = servicio.PrecioVenta
-                };
-
-                _context.SMSPoolNumeros.Add(nuevoNumero);
-                await _context.SaveChangesAsync();
-
-                _logger.LogInformation($"Número temporal comprado exitosamente: {numero}, OrderId: {orderId}");
-                return (nuevoNumero, string.Empty);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al comprar número temporal");
                 return (null, $"Error al comprar número: {ex.Message}");
+            }
+        }
+        public async Task<bool> ResolverNumerosPendientes(string userId)
+        {
+            try
+            {
+                // Buscar números pendientes del usuario
+                var numerosPendientes = await _context.SMSPoolNumeros
+                    .Where(n => n.UserId == userId && n.Estado == "Pendiente")
+                    .ToListAsync();
+
+                if (!numerosPendientes.Any())
+                {
+                    return true; // No hay pendientes
+                }
+
+                // Intentar sincronizar con SMSPool
+                await SincronizarComprasActivas(userId);
+
+                // Volver a buscar los números pendientes
+                bool todosResueltos = true;
+                foreach (var numeroPendiente in numerosPendientes)
+                {
+                    // Verificar si hay un número real correspondiente
+                    var numeroReal = await _context.SMSPoolNumeros
+                        .Where(n => n.UserId == userId &&
+                               n.ServicioId == numeroPendiente.ServicioId &&
+                               n.Estado == "Activo" &&
+                               n.Id != numeroPendiente.Id)
+                        .OrderByDescending(n => n.FechaCompra)
+                        .FirstOrDefaultAsync();
+
+                    if (numeroReal != null)
+                    {
+                        // Se encontró un número real, eliminar el pendiente
+                        _context.SMSPoolNumeros.Remove(numeroPendiente);
+                    }
+                    else
+                    {
+                        // Verificar si el número pendiente está vencido (más de 30 minutos)
+                        if ((DateTime.UtcNow - numeroPendiente.FechaCompra).TotalMinutes > 30)
+                        {
+                            // Marcar como fallido
+                            numeroPendiente.Estado = "Fallido";
+                            _context.SMSPoolNumeros.Update(numeroPendiente);
+                        }
+                        else
+                        {
+                            todosResueltos = false; // Aún hay pendientes
+                        }
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                return todosResueltos;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al resolver números pendientes");
+                return false;
             }
         }
 
