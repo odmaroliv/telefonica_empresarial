@@ -554,9 +554,10 @@
             userRoles[user.Id] = roles.ToList();
         }
 
-        // Cargar saldos
         var saldos = await DbContext.SaldosCuenta.ToListAsync();
-        userSaldos = saldos.ToDictionary(s => s.UserId);
+        userSaldos = saldos
+            .GroupBy(s => s.UserId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(s => s.UltimaActualizacion).First());
 
         // Aplicar filtros iniciales
         ApplyFilters();

@@ -38,8 +38,11 @@
             {
                 try
                 {
+                    // Buscar el registro de saldo más reciente para el usuario
                     var saldoCuenta = await _context.SaldosCuenta
-                        .FirstOrDefaultAsync(s => s.UserId == userId);
+                        .Where(s => s.UserId == userId)
+                        .OrderByDescending(s => s.UltimaActualizacion)
+                        .FirstOrDefaultAsync();
 
                     if (saldoCuenta == null)
                     {
@@ -88,9 +91,12 @@
                     {
                         localTransaction = await _context.Database.BeginTransactionAsync();
                     }
-                    // Obtener o crear saldo
+
+                    // Obtener el registro de saldo más reciente o crear uno nuevo
                     var saldoCuenta = await _context.SaldosCuenta
-                        .FirstOrDefaultAsync(s => s.UserId == userId);
+                        .Where(s => s.UserId == userId)
+                        .OrderByDescending(s => s.UltimaActualizacion)
+                        .FirstOrDefaultAsync();
 
                     if (saldoCuenta == null)
                     {
@@ -102,7 +108,6 @@
                         };
 
                         _context.SaldosCuenta.Add(saldoCuenta);
-                        await _context.SaveChangesAsync();
                     }
 
                     // Actualizar saldo
@@ -130,7 +135,6 @@
                     _logger.LogInformation($"Saldo agregado: {monto} para usuario {userId}, nuevo saldo: {saldoCuenta.Saldo}");
 
                     return true;
-
                 }
                 catch (Exception ex)
                 {
@@ -142,7 +146,6 @@
                     throw;
                 }
             }
-
             public async Task<bool> DescontarSaldo(string userId, decimal monto, string concepto, int? numeroTelefonicoId = null)
             {
                 if (monto <= 0)
@@ -155,9 +158,11 @@
 
                 try
                 {
-                    // Verificar si hay saldo suficiente
+                    // Verificar si hay saldo suficiente usando el registro más reciente
                     var saldoCuenta = await _context.SaldosCuenta
-                        .FirstOrDefaultAsync(s => s.UserId == userId);
+                        .Where(s => s.UserId == userId)
+                        .OrderByDescending(s => s.UltimaActualizacion)
+                        .FirstOrDefaultAsync();
 
                     if (saldoCuenta == null || saldoCuenta.Saldo < monto)
                     {
@@ -195,7 +200,6 @@
                     throw;
                 }
             }
-
             public async Task<List<MovimientoSaldo>> ObtenerMovimientosUsuario(string userId, int limite = 20)
             {
                 try

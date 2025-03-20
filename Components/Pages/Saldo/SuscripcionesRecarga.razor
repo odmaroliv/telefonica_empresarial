@@ -68,7 +68,8 @@
             </div>
         </div>
     }
-    else if (suscripciones == null || !suscripciones.Any())
+    else if ((suscripcionesDirectas == null || !suscripcionesDirectas.Any()) &&
+    (suscripcionesTransacciones == null || !suscripcionesTransacciones.Any()))
     {
         <div class="bg-white rounded-lg shadow-md p-6 mb-8 text-center">
             <p class="text-lg text-gray-600 mb-6">No tienes suscripciones de recarga automática activas.</p>
@@ -91,12 +92,39 @@
                         <tr>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha de inicio</th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monto mensual</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Próxima recarga</th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
-                        @foreach (var suscripcion in suscripciones)
+                        @foreach (var suscripcion in suscripcionesDirectas)
+                        {
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @suscripcion.FechaCreacion.ToString("dd/MM/yyyy")
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm font-medium text-gray-900">$@suscripcion.MontoMensual.ToString("0.00") MXN</div>
+                                    <div class="text-xs text-gray-500">Tarjeta → Saldo</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @suscripcion.ProximaRecarga.ToString("dd/MM/yyyy")
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                        Activa
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    <button @onclick="() => CancelarSuscripcion(suscripcion.StripeSubscriptionId)" class="text-red-600 hover:text-red-900">
+                                        Cancelar
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+
+                        @foreach (var suscripcion in suscripcionesTransacciones)
                         {
                             <tr>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -105,6 +133,9 @@
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="text-sm font-medium text-gray-900">$@suscripcion.Monto.ToString("0.00") MXN</div>
                                     <div class="text-xs text-gray-500">Tarjeta → Saldo</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @suscripcion.Fecha.AddMonths(1).ToString("dd/MM/yyyy")
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
@@ -159,7 +190,8 @@
 </div>
 
 @code {
-    private List<Transaccion> suscripciones;
+    private List<SuscripcionRecargaAutomatica> suscripcionesDirectas;
+    private List<Transaccion> suscripcionesTransacciones;
     private bool cargando = true;
     private string error;
     private ApplicationUser user;
@@ -197,24 +229,88 @@
             cargando = true;
             error = null;
 
-            // Buscar transacciones que correspondan a suscripciones de recarga
-            // Estas deberían tener un concepto específico y estado completado
-            suscripciones = await DbContext.Transacciones
+            // 1. Buscar suscripciones en la tabla de SuscripcionesRecargaAutomatica (modelo nuevo)
+            suscripcionesDirectas = await DbContext.SuscripcionesRecarga
+                .Where(s => s.UserId == user.Id && s.Activa)
+                .OrderByDescending(s => s.FechaCreacion)
+                .ToListAsync();
+
+            // 2. Buscar transacciones que correspondan a suscripciones de recarga (modelo anterior)
+            suscripcionesTransacciones = await DbContext.Transacciones
                 .Where(t => t.UserId == user.Id &&
                        t.Concepto.Contains("Recarga automática") &&
                        t.Status == "Completado")
                 .OrderByDescending(t => t.Fecha)
                 .ToListAsync();
+
+            // Registrar para debug
+            Logger.LogInformation($"Carga de suscripciones: {suscripcionesDirectas.Count} directas, {suscripcionesTransacciones.Count} transacciones");
+
+            if (!suscripcionesDirectas.Any() && !suscripcionesTransacciones.Any())
+            {
+                // Verificar si hay suscripciones en Stripe que no estén registradas en nuestro sistema
+                await VerificarSuscripcionesStripe();
+            }
         }
         catch (Exception ex)
         {
             error = "Error al cargar suscripciones";
             Logger.LogError(ex, error);
-            suscripciones = new List<Transaccion>();
+            suscripcionesDirectas = new List<SuscripcionRecargaAutomatica>();
+            suscripcionesTransacciones = new List<Transaccion>();
         }
         finally
         {
             cargando = false;
+        }
+    }
+
+    private async Task VerificarSuscripcionesStripe()
+    {
+        try
+        {
+            // Solo intentar si tenemos un customerId
+            if (string.IsNullOrEmpty(user.StripeCustomerId))
+                return;
+
+            // Aquí podríamos agregar lógica para consultar directamente a Stripe
+            // por suscripciones asociadas al customerId del usuario
+
+            // Esta sería una implementación básica si tuvieras un método en IStripeService
+            // para listar suscripciones activas por customerId
+
+            /*
+            var stripeSuscripciones = await StripeService.ListarSuscripcionesRecurrentes(user.StripeCustomerId);
+
+            foreach (var stripeSuscripcion in stripeSuscripciones)
+            {
+                // Verificar si ya existe en nuestra base de datos
+                var existe = await DbContext.SuscripcionesRecarga
+                    .AnyAsync(s => s.StripeSubscriptionId == stripeSuscripcion.Id);
+
+                if (!existe)
+                {
+                    // Crear nueva entrada en nuestra tabla
+                    var nuevaSuscripcion = new SuscripcionRecargaAutomatica
+                    {
+                        UserId = user.Id,
+                        StripeSubscriptionId = stripeSuscripcion.Id,
+                        MontoMensual = stripeSuscripcion.Monto,
+                        FechaCreacion = stripeSuscripcion.FechaCreacion,
+                        ProximaRecarga = stripeSuscripcion.ProximoCobroEstimado,
+                        Activa = true
+                    };
+
+                    DbContext.SuscripcionesRecarga.Add(nuevaSuscripcion);
+                    await DbContext.SaveChangesAsync();
+                }
+            }
+            */
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error al verificar suscripciones en Stripe");
+            // No propagamos el error para no interrumpir el flujo
         }
     }
 
@@ -227,20 +323,36 @@
 
         try
         {
+            // Mostrar indicador de carga
+            await JSRuntime.InvokeVoidAsync("eval", "document.body.style.cursor = 'wait'");
+
             // Llamar directamente al servicio de Stripe
             var resultado = await StripeService.CancelarSuscripcion(stripeSubscriptionId);
 
             if (resultado)
             {
-                // Actualizar la transacción en la base de datos
-                var transaccion = await DbContext.Transacciones
-                    .FirstOrDefaultAsync(t => t.StripePaymentId == stripeSubscriptionId);
+                // Primero verificar si existe en la tabla de SuscripcionesRecarga
+                var suscripcionDirecta = await DbContext.SuscripcionesRecarga
+                    .FirstOrDefaultAsync(s => s.StripeSubscriptionId == stripeSubscriptionId);
 
-                if (transaccion != null)
+                if (suscripcionDirecta != null)
                 {
-                    transaccion.Status = "Cancelado";
-                    transaccion.DetalleError = "Cancelado por el usuario";
+                    // Marcar como inactiva en lugar de eliminar
+                    suscripcionDirecta.Activa = false;
                     await DbContext.SaveChangesAsync();
+                }
+                else
+                {
+                    // Si no está en la tabla de suscripciones, buscar en transacciones
+                    var transaccion = await DbContext.Transacciones
+                        .FirstOrDefaultAsync(t => t.StripePaymentId == stripeSubscriptionId);
+
+                    if (transaccion != null)
+                    {
+                        transaccion.Status = "Cancelado";
+                        transaccion.DetalleError = "Cancelado por el usuario";
+                        await DbContext.SaveChangesAsync();
+                    }
                 }
 
                 await JSRuntime.InvokeVoidAsync("alert", "Suscripción cancelada correctamente");
@@ -248,13 +360,18 @@
             }
             else
             {
-                await JSRuntime.InvokeVoidAsync("alert", "No se pudo cancelar la suscripción");
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo cancelar la suscripción. Por favor, intente nuevamente.");
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, $"Error al cancelar suscripción {stripeSubscriptionId}");
-            await JSRuntime.InvokeVoidAsync("alert", "Error al cancelar suscripción");
+            await JSRuntime.InvokeVoidAsync("alert", "Error al cancelar suscripción: " + ex.Message);
+        }
+        finally
+        {
+            // Restaurar cursor
+            await JSRuntime.InvokeVoidAsync("eval", "document.body.style.cursor = 'default'");
         }
     }
 

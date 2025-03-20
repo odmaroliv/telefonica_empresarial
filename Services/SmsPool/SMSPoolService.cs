@@ -203,6 +203,10 @@ namespace TelefonicaEmpresarial.Services
                 // Ahora, intentamos deserializar la respuesta
                 try
                 {
+                    if (typeof(T) == typeof(JArray))
+                    {
+                        return (T)(object)JArray.Parse(responseString);
+                    }
                     return JsonConvert.DeserializeObject<T>(responseString);
                 }
                 catch (JsonSerializationException ex)
@@ -216,7 +220,6 @@ namespace TelefonicaEmpresarial.Services
                         if (array != null)
                         {
                             _logger.LogInformation("Convirtiendo array a objeto");
-                            // Crear un diccionario donde las claves son los índices
                             var dict = new Dictionary<string, object>();
                             for (int i = 0; i < array.Count; i++)
                             {
@@ -708,23 +711,32 @@ namespace TelefonicaEmpresarial.Services
 
                 // Consultar a la API de SMSPool para obtener países disponibles
                 var parameters = new Dictionary<string, string>
-                {
-                    { "service", servicio.ServiceId }
-                };
+        {
+            { "service", servicio.ServiceId }
+        };
 
-                var response = await SendPostRequest<dynamic>("request/suggested_countries", parameters);
-
+                var response = await SendPostRequest<JArray>("request/suggested_countries", parameters);
                 var paises = new List<KeyValuePair<string, string>>();
 
                 if (response != null)
                 {
-                    var paisesJson = JsonConvert.DeserializeObject<Dictionary<string, string>>(response.ToString());
-                    if (paisesJson != null)
+                    try
                     {
-                        foreach (var pais in paisesJson)
+                        // Procesar el array de países
+                        foreach (JObject countryObj in response)
                         {
-                            paises.Add(new KeyValuePair<string, string>(pais.Key, pais.Value));
+                            string shortName = countryObj["short_name"]?.ToString();
+                            string fullName = countryObj["name"]?.ToString();
+
+                            if (!string.IsNullOrEmpty(shortName) && !string.IsNullOrEmpty(fullName))
+                            {
+                                paises.Add(new KeyValuePair<string, string>(shortName, fullName));
+                            }
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error al procesar la lista de países: " + ex.Message);
                     }
                 }
 
@@ -744,17 +756,31 @@ namespace TelefonicaEmpresarial.Services
 
                 // Devolver lista por defecto
                 var paisesDefecto = new List<KeyValuePair<string, string>>
-                {
-                    new KeyValuePair<string, string>("US", "Estados Unidos"),
-                    new KeyValuePair<string, string>("GB", "Reino Unido"),
-                    new KeyValuePair<string, string>("CA", "Canadá")
-                };
+        {
+            new KeyValuePair<string, string>("US", "Estados Unidos"),
+            new KeyValuePair<string, string>("GB", "Reino Unido"),
+            new KeyValuePair<string, string>("CA", "Canadá")
+        };
 
                 return paisesDefecto;
             }
         }
 
-        // Reemplaza el método ComprarNumeroTemporal con esta versión mejorada
+        // Método auxiliar para obtener nombres de país desde códigos
+        private string GetCountryName(string countryCode)
+        {
+            var countryNames = new Dictionary<string, string>
+    {
+        { "US", "Estados Unidos" },
+        { "GB", "Reino Unido" },
+        { "CA", "Canadá" },
+        { "ES", "España" },
+        { "MX", "México" },
+
+    };
+
+            return countryNames.ContainsKey(countryCode) ? countryNames[countryCode] : countryCode;
+        }
 
         public async Task<(SMSPoolNumero Numero, string Error)> ComprarNumeroTemporal(string userId, int servicioId, string pais = "US")
         {
@@ -791,8 +817,31 @@ namespace TelefonicaEmpresarial.Services
                     // Procesar respuesta exitosa
                     if (response != null && response.success != null && response.success.ToString() == "1")
                     {
-                        string orderId = response.id?.ToString();
-                        string numero = response.number?.ToString();
+                        // Buscar el ID de orden en diferentes campos posibles
+                        string orderId = null;
+
+                        // Intentar extraer el ID de diferentes campos en la respuesta
+                        if (response.orderid != null)
+                        {
+                            orderId = response.orderid.ToString();
+                        }
+                        else if (response.order_id != null)
+                        {
+                            orderId = response.order_id.ToString();
+                        }
+                        else if (response.id != null)
+                        {
+                            orderId = response.id.ToString();
+                        }
+
+                        // Si no se encontró ningún ID, generar uno temporal
+                        if (string.IsNullOrEmpty(orderId))
+                        {
+                            _logger.LogWarning("No se pudo extraer OrderId de la respuesta de la API. Generando ID temporal.");
+                            orderId = "TEMP-" + Guid.NewGuid().ToString();
+                        }
+
+                        string numero = response.number?.ToString() ?? "Pendiente";
 
                         // Descontar saldo y guardar en base de datos
                         bool saldoDescontado = await _saldoService.DescontarSaldo(
@@ -813,12 +862,15 @@ namespace TelefonicaEmpresarial.Services
                             ServicioId = servicioId,
                             Numero = numero,
                             OrderId = orderId,
+                            CodigoRecibido = string.Empty, // Valor predeterminado
                             Pais = pais,
                             FechaCompra = DateTime.UtcNow,
                             FechaExpiracion = DateTime.UtcNow.AddMinutes(20),
                             Estado = "Activo",
                             CostoPagado = servicio.PrecioVenta,
-                            SMSRecibido = false
+                            SMSRecibido = false,
+                            VerificacionExitosa = false,
+                            FechaUltimaComprobacion = DateTime.UtcNow
                         };
 
                         _context.SMSPoolNumeros.Add(nuevoNumero);
@@ -834,71 +886,117 @@ namespace TelefonicaEmpresarial.Services
                             errorMsg = response.message.ToString();
                         }
 
-                        // Si la API falló pero podría haber completado la compra, intentar sincronizar
-                        await SincronizarComprasActivas(userId);
-
-                        // Verificar si la sincronización encontró el número que acabamos de intentar comprar
-                        var numeroSincronizado = await _context.SMSPoolNumeros
-                            .Where(n => n.UserId == userId && n.ServicioId == servicioId)
-                            .OrderByDescending(n => n.FechaCompra)
-                            .FirstOrDefaultAsync();
-
-                        if (numeroSincronizado != null && (DateTime.UtcNow - numeroSincronizado.FechaCompra).TotalMinutes < 5)
+                        if (response != null && response.success != null && response.success.ToString() == "0")
                         {
-                            // La compra probablemente tuvo éxito a pesar del error de API
-                            return (numeroSincronizado, string.Empty);
+                            if (response.message != null && response.message.ToString() == "Failed to connect to database.")
+                            {
+                                errorMsg = "Error de conexión a la base de datos del proveedor. Intente más tarde.";
+                                //_logger.LogWarning("SMSPool reportó error de conexión a su base de datos: {Message}", response.message);
+                            }
+                            else if (response.message != null)
+                            {
+                                errorMsg = response.message.ToString();
+                            }
+                            return (null, errorMsg);
+                        }
+
+                        // Aquí solo intentamos sincronizar si hay posibilidad de que la compra haya sido exitosa
+                        // a pesar del error de la API (casos ambiguos)
+                        bool posibleCompraExitosa = errorMsg.Contains("timeout") ||
+                                                    errorMsg.Contains("connection") ||
+                                                    errorMsg.Contains("network");
+
+                        if (posibleCompraExitosa)
+                        {
+                            // Si la API falló pero podría haber completado la compra, intentar sincronizar
+                            await SincronizarComprasActivas(userId);
+
+                            // Verificar si la sincronización encontró el número que acabamos de intentar comprar
+                            var numeroSincronizado = await _context.SMSPoolNumeros
+                                .Where(n => n.UserId == userId && n.ServicioId == servicioId)
+                                .OrderByDescending(n => n.FechaCompra)
+                                .FirstOrDefaultAsync();
+
+                            if (numeroSincronizado != null && (DateTime.UtcNow - numeroSincronizado.FechaCompra).TotalMinutes < 5)
+                            {
+                                // La compra probablemente tuvo éxito a pesar del error de API
+                                return (numeroSincronizado, string.Empty);
+                            }
                         }
 
                         return (null, errorMsg);
                     }
                 }
+                // Uso en el método ComprarNumeroTemporal en la sección de manejo de excepciones
                 catch (Exception ex)
                 {
-                    // Si ocurre cualquier excepción en la comunicación con la API,
-                    // intentar sincronizar compras para detectar si la operación tuvo éxito
-                    _logger.LogWarning(ex, "Error en comunicación con SMSPool, intentando sincronizar compras");
-
-                    // Guardar un registro de compra "pendiente" 
-                    var numeroPendiente = new SMSPoolNumero
+                    // Verificar si es un error conocido donde NO DEBEMOS crear número pendiente
+                    string mensajeUsuario;
+                    if (EsErrorConocido(ex.Message, out mensajeUsuario))
                     {
-                        UserId = userId,
-                        ServicioId = servicioId,
-                        Numero = "Pendiente", // Placeholder hasta sincronizar
-                        OrderId = "Pendiente-" + Guid.NewGuid().ToString(),
-                        Pais = pais,
-                        FechaCompra = DateTime.UtcNow,
-                        FechaExpiracion = DateTime.UtcNow.AddMinutes(20),
-                        Estado = "Pendiente", // Estado especial
-                        CostoPagado = servicio.PrecioVenta,
-                        SMSRecibido = false
-                    };
-
-                    _context.SMSPoolNumeros.Add(numeroPendiente);
-                    await _context.SaveChangesAsync();
-
-                    // Intentar sincronizar
-                    bool sincronizado = await SincronizarComprasActivas(userId);
-
-                    if (sincronizado)
-                    {
-                        // Verificar si se encontró una compra real que reemplaza la pendiente
-                        var numeroReal = await _context.SMSPoolNumeros
-                            .Where(n => n.UserId == userId && n.ServicioId == servicioId && n.Estado == "Activo")
-                            .OrderByDescending(n => n.FechaCompra)
-                            .FirstOrDefaultAsync();
-
-                        if (numeroReal != null && numeroReal.Id != numeroPendiente.Id)
-                        {
-                            // Eliminar el registro pendiente
-                            _context.SMSPoolNumeros.Remove(numeroPendiente);
-                            await _context.SaveChangesAsync();
-
-                            return (numeroReal, string.Empty);
-                        }
+                        _logger.LogWarning(ex, "Error conocido que no requiere crear número pendiente: {Message}", ex.Message);
+                        return (null, mensajeUsuario);
                     }
 
-                    // No se pudo sincronizar, mantener como pendiente
-                    return (numeroPendiente, "La compra está pendiente de confirmación. Intente verificar más tarde.");
+                    // Solo para errores de CONEXIÓN (no errores de negocio)
+                    // creamos número pendiente e intentamos sincronizar
+                    if (EsErrorDeConexion(ex))
+                    {
+                        _logger.LogWarning(ex, "Error de conexión con SMSPool, intentando sincronizar compras");
+
+                        // Guardar un registro de compra "pendiente" 
+                        var numeroPendiente = new SMSPoolNumero
+                        {
+                            UserId = userId,
+                            ServicioId = servicioId,
+                            Numero = "Pendiente", // Placeholder hasta sincronizar
+                            OrderId = "PENDING-" + Guid.NewGuid().ToString(), // Asegurar que no sea null
+                            CodigoRecibido = string.Empty, // Asegurar que no sea null
+                            Pais = pais,
+                            FechaCompra = DateTime.UtcNow,
+                            FechaExpiracion = DateTime.UtcNow.AddMinutes(20),
+                            Estado = "Pendiente", // Estado especial
+                            CostoPagado = servicio.PrecioVenta,
+                            SMSRecibido = false,
+                            VerificacionExitosa = false,
+                            FechaUltimaComprobacion = DateTime.UtcNow
+                        };
+
+                        _context.SMSPoolNumeros.Add(numeroPendiente);
+                        await _context.SaveChangesAsync();
+
+                        // Intentar sincronizar
+                        bool sincronizado = await SincronizarComprasActivas(userId);
+
+                        if (sincronizado)
+                        {
+                            // Verificar si se encontró una compra real que reemplaza la pendiente
+                            var numeroReal = await _context.SMSPoolNumeros
+                                .Where(n => n.UserId == userId && n.ServicioId == servicioId && n.Estado == "Activo")
+                                .OrderByDescending(n => n.FechaCompra)
+                                .FirstOrDefaultAsync();
+
+                            if (numeroReal != null && numeroReal.Id != numeroPendiente.Id)
+                            {
+                                // Eliminar el registro pendiente
+                                _context.SMSPoolNumeros.Remove(numeroPendiente);
+                                await _context.SaveChangesAsync();
+
+                                return (numeroReal, string.Empty);
+                            }
+                        }
+
+                        // No se pudo sincronizar, mantener como pendiente
+                        return (numeroPendiente, "La compra está pendiente de confirmación. Intente verificar más tarde.");
+                    }
+                    else
+                    {
+                        // Para cualquier otro tipo de error, simplemente informamos al usuario
+                        // sin crear números pendientes
+                        _logger.LogError(ex, "Error al comprar número temporal (sin crear pendiente)");
+                        return (null, $"Error al solicitar número: {ex.Message}");
+                    }
+
                 }
             }
             catch (Exception ex)
@@ -906,6 +1004,74 @@ namespace TelefonicaEmpresarial.Services
                 _logger.LogError(ex, "Error al comprar número temporal");
                 return (null, $"Error al comprar número: {ex.Message}");
             }
+        }
+
+        // Función auxiliar para verificar patrones de error específicos
+        private bool EsErrorConocido(string mensajeError, out string mensajeUsuario)
+        {
+            // Normalizar mensaje (quitar HTML, normalizar espacios, pasar a minúsculas)
+            string mensajeNormalizado = NormalizarMensajeError(mensajeError).ToLower();
+
+            // Lista de patrones específicos con sus mensajes correspondientes
+            var patronesErroresConocidos = new Dictionary<string, string>
+    {
+        { "no numbers available at the moment", "No hay números disponibles en este momento. Por favor, intente más tarde." },
+        { "pool.*no numbers available", "No hay números disponibles en este momento. Por favor, intente más tarde." },
+        { "service not found", "El servicio solicitado no está disponible." },
+        { "country not found", "El país seleccionado no está disponible." },
+        { "invalid service", "El servicio solicitado no es válido." },
+        { "max count of same numbers", "Ha alcanzado el límite máximo de números permitidos para este servicio." }
+    };
+
+            foreach (var patron in patronesErroresConocidos)
+            {
+                if (System.Text.RegularExpressions.Regex.IsMatch(mensajeNormalizado, patron.Key))
+                {
+                    mensajeUsuario = patron.Value;
+                    return true;
+                }
+            }
+
+            mensajeUsuario = "Ha ocurrido un error al solicitar el número.";
+            return false;
+        }
+
+        // Función para quitar etiquetas HTML y normalizar espacios
+        private string NormalizarMensajeError(string mensaje)
+        {
+            // Si el mensaje es null, devolver cadena vacía
+            if (string.IsNullOrEmpty(mensaje))
+                return string.Empty;
+
+            // Quitar etiquetas HTML
+            string sinHTML = System.Text.RegularExpressions.Regex.Replace(mensaje, "<.*?>", " ");
+
+            // Normalizar espacios (múltiples espacios a uno solo)
+            string espaciosNormalizados = System.Text.RegularExpressions.Regex.Replace(sinHTML, @"\s+", " ");
+
+            return espaciosNormalizados.Trim();
+        }
+
+        // Función para determinar si es un error de conexión
+        private bool EsErrorDeConexion(Exception ex)
+        {
+            // Lista de tipos de excepción que indican problemas de conexión
+            if (ex is System.Net.WebException ||
+                ex is System.Net.Http.HttpRequestException ||
+                ex is System.IO.IOException ||
+                ex is System.Threading.Tasks.TaskCanceledException)
+            {
+                return true;
+            }
+
+            // Verificar patrones en el mensaje de error
+            string mensajeError = ex.Message.ToLower();
+            string[] patronesErrorConexion = new[] {
+        "timeout", "timed out", "connection", "connectivity",
+        "network", "socket", "host", "refused", "reset", "unreachable"
+    };
+
+            return patronesErrorConexion.Any(patron => mensajeError.Contains(patron));
         }
         public async Task<bool> ResolverNumerosPendientes(string userId)
         {
