@@ -17,6 +17,7 @@ using TelefonicaEmpresarial.Areas.Identity;
 using TelefonicaEmpresarial.Middleware;
 using TelefonicaEmpresarial.Services;
 using TelefonicaEmpresarial.Services.BackgroundJobs;
+using TelefonicaEmpresarial.Services.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -82,7 +83,9 @@ builder.Services.AddHealthChecks()
     .AddUrlGroup(new Uri("https://pricing.twilio.com/v1/"), "twilio-precing-status")
     .AddUrlGroup(new Uri("https://api.smspool.net/"), "smspool-status")
     .AddCheck<QuartzJobsHealthCheck>("quartz-jobs")
-    .AddCheck<TransaccionesMonitorHealthCheck>("transacciones-monitor-job");
+    .AddCheck<TransaccionesMonitorHealthCheck>("transacciones-monitor-job")
+    .AddCheck<SMSPoolAuditHealthCheck>("smspool-audit-job", tags: new[] { "jobs" });
+
 
 
 // Configuración de Health Checks UI
@@ -273,6 +276,14 @@ builder.Services.AddQuartz(q =>
         .WithIdentity("PendingOrders-Trigger")
         .WithCronSchedule("0 */5 * * * ?"));
 
+    var smsPoolAuditJobKey = new JobKey("SMSPoolAuditJob");
+    q.AddJob<SMSPoolAuditJob>(opts => opts.WithIdentity(smsPoolAuditJobKey));
+
+    // Configurar para ejecutar cada 3 minutos
+    q.AddTrigger(opts => opts
+        .ForJob(smsPoolAuditJobKey)
+        .WithIdentity("SMSPoolAudit-Trigger")
+        .WithCronSchedule("0 0/3 * * * ?")); // Ejecutar cada 3 minutos
 
     // Agregar un trigger adicional para procesar en lotes durante el día
     q.AddTrigger(opts => opts
